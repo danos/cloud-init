@@ -1,2 +1,3 @@
 fix-path-to-blkid-binary.patch
 disable-rhel-set-hostname-test.patch
+vyatta-distro.patch
