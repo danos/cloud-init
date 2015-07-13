@@ -6,3 +6,4 @@
 fix-sysvinit-dependencies.patch
 cloud-init-before-chronyd.patch
 0008-opennebula-also-exclude-epochseconds-from-changed-en.patch
+vyatta-distro.patch

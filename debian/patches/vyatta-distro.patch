@@ -1,0 +1,194 @@
+--- /dev/null
++++ b/cloudinit/distros/vyatta.py
+@@ -0,0 +1,191 @@
++# vi: ts=4 expandtab
++#
++#    Copyright (C) 2015 Brocade Communication Systems, Inc.
++#
++#    Author: Jan Blunck <jblunck@brocade.com>
++#
++#    This program is free software: you can redistribute it and/or modify
++#    it under the terms of the GNU General Public License version 3, as
++#    published by the Free Software Foundation.
++#
++#    This program is distributed in the hope that it will be useful,
++#    but WITHOUT ANY WARRANTY; without even the implied warranty of
++#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++#    GNU General Public License for more details.
++#
++#    You should have received a copy of the GNU General Public License
++#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
++
++from cloudinit import distros
++from cloudinit import helpers
++from cloudinit import log as logging
++from cloudinit import util
++
++from cloudinit.distros import net_util
++from cloudinit.distros.parsers.hostname import HostnameConf
++from cloudinit.settings import PER_INSTANCE
++
++LOG = logging.getLogger(__name__)
++
++
++class Distro(distros.Distro):
++    locale_conf_fn = "/etc/default/locale"
++    systemd_locale_conf_fn = '/etc/locale.conf'
++    network_conf_fn = "/etc/network/interfaces"
++    tz_local_fn = "/etc/localtime"
++
++    def __init__(self, name, cfg, paths):
++        distros.Distro.__init__(self, name, cfg, paths)
++        # This will be used to restrict certain
++        # calls from repeatly happening (when they
++        # should only happen say once per instance...)
++        self._runner = helpers.Runners(paths)
++        self.osfamily = 'vyatta'
++
++    #
++    # _write_network is called if we process a config-drive datasource. In this
++    # cases we write a JSON bases state file that is picked up by a postconfig
++    # script to apply the network configuration from the config-drive to the
++    # dataplane.
++    #
++
++    def _write_network(self, settings):
++        # this runs before the dataplane so do Debian stuff too
++        util.write_file(self.network_conf_fn, settings)
++        # write out the dataplane configuration into a postconfig file so that
++        # the device names can get translated later on
++        entries = net_util.translate_network(settings)
++        LOG.debug("Translated ubuntu style network settings %s into %s",
++                  settings, entries)
++        # FIXME: append to dictionary with key "interfaces" and store it in
++        # JSON file /var/run/vyatta-cloud-config.json
++        return entries.keys()
++
++    def _bring_up_interfaces(self, device_names):
++        if device_names and 'all' in device_names:
++            raise RuntimeError(('Distro %s can not translate '
++                                'the device name "all"') % (self.name))
++        return distros.Distro._bring_up_interfaces(self, device_names)
++
++    #
++    # The following functions are called during 'init phase' which is executed
++    # before the configd system loaded the initial configuration file.
++    #
++
++    def _select_hostname(self, hostname, fqdn):
++        # Prefer the short hostname over the long
++        # fully qualified domain name
++        if not hostname:
++            return fqdn
++        return hostname
++
++    def _write_hostname(self, your_hostname, out_fn):
++        conf = None
++        try:
++            # Try to update the previous one
++            # so lets see if we can read it first.
++            conf = self._read_hostname_conf(out_fn)
++        except IOError:
++            pass
++        if not conf:
++            conf = HostnameConf('')
++        conf.set_hostname(your_hostname)
++        util.write_file(out_fn, str(conf), 0644)
++        # FIXME: append to dictionary with key "interfaces" and store it in
++        # JSON file /var/run/vyatta-cloud-config.json
++
++    def _read_system_hostname(self):
++        sys_hostname = self._read_hostname(self.hostname_conf_fn)
++        return (self.hostname_conf_fn, sys_hostname)
++
++    def _read_hostname_conf(self, filename):
++        conf = HostnameConf(util.load_file(filename))
++        conf.parse()
++        return conf
++
++    def _read_hostname(self, filename, default=None):
++        hostname = None
++        try:
++            conf = self._read_hostname_conf(filename)
++            hostname = conf.hostname
++        except IOError:
++            pass
++        if not hostname:
++            return default
++        return hostname
++
++    def add_user(self, name, **kwargs):
++        """
++        Add a user to the system using Vyatta CLI
++        Called in 'config' phase.
++        """
++        path = [ "system", "login", "user", name ]
++        result = client.Set(path)
++
++    def set_passwd(self, user, passwd, hashed=False):
++        """Called in 'config' phase"""
++        path = [ "system", "login", "user", user, "authentication" ]
++        if hashed:
++            path.append([ "encrypted-password", passwd ])
++        else:
++            path.append([ "plaintext-password", passwd ])
++        result = client.Set(path)
++
++    def lock_passwd(self, user):
++        """
++        Lock the password of a user, i.e., disable password logins
++        Called in 'config' phase.
++        """
++        path = [ "system", "login", "user", user, "authentication",
++                 "encrypted-password" ]
++        if client.NodeExists(client.AUTO, path):
++            result = client.Delete(path)
++        return
++
++    #
++    # The following functions are called during 'config phase' which is executed
++    # after the configd system loaded the initial configuration file.
++    #
++
++    def _dist_uses_systemd(self):
++        # Vyatta 4.0 (Santa Cruz) is based on Debian 8.0
++        (dist, vers) = util.system_info()['dist'][:2]
++        major = (int)(vers.split('.')[0])
++        # FIXME: we identify as "debian 7.8"
++        return (dist.startswith('debian') and major >= 8)
++
++    def apply_locale(self, locale, out_fn=None):
++        if not out_fn:
++            if self._dist_uses_systemd():
++                out_fn = self.systemd_locale_conf_fn
++            else:
++                out_fn = self.locale_conf_fn
++        util.subp(['locale-gen', locale], capture=False)
++        util.subp(['update-locale', locale], capture=False)
++        # "" provides trailing newline during join
++        lines = [
++            util.make_header(),
++            'LANG="%s"' % (locale),
++            "",
++        ]
++        util.write_file(out_fn, "\n".join(lines))
++
++    def set_timezone(self, tz):
++        tz_file = self._find_tz_file(tz)
++        # FIXME: Write TZ to config.boot "set system time-zone"
++        if self._dist_uses_systemd():
++            # Currently, timedatectl complains if invoked during startup
++            # so for compatibility, create the link manually.
++            util.del_file(self.tz_local_fn)
++            util.sym_link(tz_file, self.tz_local_fn)
++        else:
++            distros.set_etc_timezone(tz=tz, tz_file=tz_file)
++
++    def install_packages(self, pkglist):
++        return
++
++    def package_command(self, command, args=None, pkgs=None):
++        return
++
++    def update_package_sources(self):
++        return
