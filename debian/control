@@ -6,6 +6,7 @@ Uploaders: Miguel Landaeta <miguel@miguel.cc>,
 Section: admin
 Priority: optional
 Build-Depends: debhelper (>= 9),
+               dh-python,
                iproute2,
                po-debconf,
                pyflakes,
