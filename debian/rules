@@ -3,6 +3,9 @@
 %:
 	dh $@ --with python2 --buildsystem=python_distutils
 
+override_dh_auto_install:
+	dh_auto_install -- --init-system=sysvinit,systemd
+
 override_dh_install:
 	dh_install
 	rm -rf debian/cloud-init/usr/lib/python?.?/dist-packages/tests
