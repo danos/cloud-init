@@ -3,6 +3,7 @@ Description=Apply the settings specified in cloud-config
 After=network.target syslog.target cloud-config.target
 Requires=cloud-config.target
 Wants=network.target
+ConditionFileNotEmpty=/var/lib/cloud/instance/datasource
 
 [Service]
 Type=oneshot

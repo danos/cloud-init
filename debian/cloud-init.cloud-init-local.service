@@ -1,5 +1,6 @@
 [Unit]
 Description=Initial cloud-init job (pre-networking)
+ConditionKernelCommandLine=cloud-init
 
 [Service]
 Type=oneshot
