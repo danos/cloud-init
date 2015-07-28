@@ -12,7 +12,7 @@ ConditionFileNotEmpty=|/var/lib/cloud/instance/datasource
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/cloud-init init
+ExecStart=/usr/bin/sg vyattacfg "/usr/bin/cloud-init init"
 RemainAfterExit=yes
 TimeoutSec=0
 

@@ -46,6 +46,7 @@ Depends: lsb-base (>= 4.1+Debian3),
          python-requests,
          python-serial,
          python-software-properties,
+         python-vyatta-cfgclient,
          python-yaml,
          ${misc:Depends},
          ${python:Depends}

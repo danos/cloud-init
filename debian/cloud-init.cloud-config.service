@@ -1,13 +1,13 @@
 [Unit]
 Description=Apply the settings specified in cloud-config
-After=network.target syslog.target cloud-config.target
+After=network.target syslog.target cloud-config.target configd.service
 Requires=cloud-config.target
 Wants=network.target
 ConditionFileNotEmpty=/var/lib/cloud/instance/datasource
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/cloud-init modules --mode=config
+ExecStart=/usr/bin/sg vyattacfg "/usr/bin/cloud-init modules --mode=config"
 RemainAfterExit=yes
 TimeoutSec=0
 
