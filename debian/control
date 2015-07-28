@@ -50,6 +50,7 @@ Depends:
  lsb-release,
  net-tools,
  procps,
+ python-vyatta-cfgclient,
  ${misc:Depends},
  ${python3:Depends},
 Recommends:
