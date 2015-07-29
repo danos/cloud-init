@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 
 PYTHON3S:=$(shell py3versions -vr)
-export PYBUILD_INSTALL_ARGS=--init-system=systemd,sysvinit_deb
+export PYBUILD_INSTALL_ARGS=--init-system=systemd
 
 %:
 	dh $@ --with python3,systemd --buildsystem pybuild
@@ -25,10 +25,7 @@ ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 endif
 
 override_dh_installinit:
-	dh_installinit --onlyscripts --no-start --no-restart-on-upgrade --name cloud-init-local
-	dh_installinit --onlyscripts --no-start --no-restart-on-upgrade
-	dh_installinit --onlyscripts --no-start --no-restart-on-upgrade --name cloud-config
-	dh_installinit --onlyscripts --no-start --no-restart-on-upgrade --name cloud-final
+	dh_installinit --noscripts
 
 override_dh_systemd_start:
 	dh_systemd_start --no-restart-on-upgrade --no-start
