@@ -9,3 +9,4 @@ cloud-init-before-chronyd.patch
 use-vcli-in-util-shellify.patch
 jinja2-unittest-failure-fix
 vyatta-distro.patch
+cc-ssh-vytta-config-module.patch
