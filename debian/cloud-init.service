@@ -1,7 +1,7 @@
 [Unit]
 Description=Initial cloud-init job (metadata service crawler)
 After=network.target cloud-init-local.service
-Before=sshd.service sshd-keygen.service
+Before=sshd.service sshd-keygen.service configd.service
 Requires=network.target
 Wants=cloud-init-local.service sshd.service sshd-keygen.service
 ConditionKernelCommandLine=cloud-init
@@ -12,7 +12,7 @@ ConditionFileNotEmpty=|/var/lib/cloud/instance/datasource
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/sg vyattacfg "/usr/bin/cloud-init init"
+ExecStart=/usr/bin/cloud-init init
 RemainAfterExit=yes
 TimeoutSec=0
 
