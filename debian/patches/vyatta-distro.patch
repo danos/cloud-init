@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/cloudinit/distros/vyatta.py
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,198 @@
 +# vi: ts=4 expandtab
 +#
 +#    Copyright (C) 2015 Brocade Communication Systems, Inc.
@@ -162,11 +162,7 @@
 +    #
 +
 +    def _dist_uses_systemd(self):
-+        # Vyatta 4.0 (Santa Cruz) is based on Debian 8.0
-+        (dist, vers) = util.system_info()['dist'][:2]
-+        major = (int)(vers.split('.')[0])
-+        # FIXME: we identify as "debian 7.8"
-+        return (dist.startswith('debian') and major >= 8)
++	return True
 +
 +    def apply_locale(self, locale, out_fn=None):
 +        if not out_fn:
