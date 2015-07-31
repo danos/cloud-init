@@ -1,3 +1,4 @@
+jinja2-unittest-failure-fix
 fix-path-to-blkid-binary.patch
 disable-rhel-set-hostname-test.patch
 vyatta-distro.patch
