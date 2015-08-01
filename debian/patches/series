@@ -1,4 +1,6 @@
 use-vcli-in-util-shellify.patch
+cc-resizefs-vaytta-image.patch
+cc-growpart-respect-defaults.patch
 jinja2-unittest-failure-fix
 fix-path-to-blkid-binary.patch
 disable-rhel-set-hostname-test.patch

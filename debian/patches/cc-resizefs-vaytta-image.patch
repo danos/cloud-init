@@ -1,0 +1,11 @@
+--- a/cloudinit/config/cc_resizefs.py
++++ b/cloudinit/config/cc_resizefs.py
+@@ -90,7 +90,7 @@ def handle(name, cfg, _cloud, log, args)
+     util.ensure_dir(resize_root_d)
+ 
+     # TODO(harlowja): allow what is to be resized to be configurable??
+-    resize_what = "/"
++    resize_what = "/boot"
+     result = util.get_mount_info(resize_what, log)
+     if not result:
+         log.warn("Could not determine filesystem type of %s", resize_what)
