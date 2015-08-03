@@ -6,5 +6,6 @@
 fix-sysvinit-dependencies.patch
 cloud-init-before-chronyd.patch
 0008-opennebula-also-exclude-epochseconds-from-changed-en.patch
+use-vcli-in-util-shellify.patch
 jinja2-unittest-failure-fix
 vyatta-distro.patch

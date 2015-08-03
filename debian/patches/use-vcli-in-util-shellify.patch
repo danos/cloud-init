@@ -1,0 +1,20 @@
+--- a/cloudinit/util.py
++++ b/cloudinit/util.py
+@@ -614,7 +614,7 @@ def runparts(dirp, skip_no_exist=True, e
+         if os.path.isfile(exe_path) and os.access(exe_path, os.X_OK):
+             attempted.append(exe_path)
+             try:
+-                subp(prefix + [exe_path], capture=False)
++                subp(['/bin/vcli', '-f', exe_path], capture=False)
+             except ProcessExecutionError as e:
+                 logexc(LOG, "Failed running %s [%s]", exe_path, e.exit_code)
+                 failed.append(e)
+@@ -1595,7 +1595,7 @@ def abs_join(*paths):
+ def shellify(cmdlist, add_header=True):
+     content = ''
+     if add_header:
+-        content += "#!/bin/sh\n"
++        content += "#!/bin/vcli -f\n"
+     escaped = "%s%s%s%s" % ("'", '\\', "'", "'")
+     cmds_made = 0
+     for args in cmdlist:
