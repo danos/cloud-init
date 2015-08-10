@@ -12,3 +12,4 @@ cc-growpart-respect-defaults.patch
 jinja2-unittest-failure-fix
 vyatta-distro.patch
 cc-ssh-vytta-config-module.patch
+apply-network-vyatta.patch
