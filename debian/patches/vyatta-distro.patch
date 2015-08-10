@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/cloudinit/distros/vyatta.py
-@@ -0,0 +1,241 @@
+@@ -0,0 +1,231 @@
 +# vi: ts=4 expandtab
 +#
 +#    Copyright (C) 2015 Brocade Communication Systems, Inc.
@@ -55,29 +55,19 @@
 +            result = self.client.SessionSetup(sessid)
 +
 +    #
-+    # _write_network is called if we process a config-drive datasource. In this
-+    # cases we write a JSON bases state file that is picked up by a postconfig
-+    # script to apply the network configuration from the config-drive to the
-+    # dataplane.
++    # configd is not running at this point so we can't apply a network
++    # configuration.  The metadata is already stored in the cache which
++    # will be read by a module during the config stage.
 +    #
 +
++    def apply_network(self, settings, bring_up=True):
++        return
++
 +    def _write_network(self, settings):
-+        # this runs before the dataplane so do Debian stuff too
-+        util.write_file(self.network_conf_fn, settings)
-+        # write out the dataplane configuration into a postconfig file so that
-+        # the device names can get translated later on
-+        entries = net_util.translate_network(settings)
-+        LOG.debug("Translated ubuntu style network settings %s into %s",
-+                  settings, entries)
-+        # FIXME: append to dictionary with key "interfaces" and store it in
-+        # JSON file /var/run/vyatta-cloud-config.json
-+        return entries.keys()
++        return
 +
 +    def _bring_up_interfaces(self, device_names):
-+        if device_names and 'all' in device_names:
-+            raise RuntimeError(('Distro %s can not translate '
-+                                'the device name "all"') % (self.name))
-+        return distros.Distro._bring_up_interfaces(self, device_names)
++        return
 +
 +    #
 +    # The following functions are called during 'init phase' which is executed
