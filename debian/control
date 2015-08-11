@@ -33,6 +33,7 @@ Homepage: https://launchpad.net/cloud-init
 Package: cloud-init
 Architecture: all
 Depends: lsb-base (>= 4.1+Debian3),
+         cloud-utils-growpart,
          ifupdown,
          procps,
          python,
