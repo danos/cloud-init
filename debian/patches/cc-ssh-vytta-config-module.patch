@@ -34,7 +34,7 @@
 +from cloudinit import util
 +
 +import os
-+from Vyatta import CfgClient
++from vyatta import configd
 +
 +DISABLE_ROOT_OPTS = ("disable-tcp-forwarding")
 +
@@ -96,9 +96,9 @@
 +
 +
 +def apply_credentials(keys, user, disable_root, disable_root_opts):
-+    client = CfgClient.CfgClient()
++    client = configd.Client()
 +    sessid = str(os.getpid())
-+    result = client.SessionSetup(sessid)
++    result = client.session_setup(sessid)
 +
 +    if user:
 +        keyNo = 0
@@ -108,33 +108,33 @@
 +
 +            path = [ "system", "login", "user", user,
 +                     "authentication", "public-keys", str(keyNo) ]
-+            if client.NodeExists(client.AUTO, path):
-+                result = client.Delete(path)
-+                result = client.Commit("")
++            if client.node_exists(client.AUTO, path):
++                result = client.delete(path)
++                result = client.commit("")
 +            path = [ "system", "login", "user", user,
 +                     "authentication", "public-keys", str(keyNo),
 +                     "key", keyBase64 ]
-+            result = client.Set(path)
++            result = client.set(path)
 +            path = [ "system", "login", "user", user,
 +                     "authentication", "public-keys", str(keyNo),
 +                     "type", keyType ]
-+            result = client.Set(path)
++            result = client.set(path)
 +            keyNo = keyNo + 1
-+        result = client.Commit("")
++        result = client.commit("")
 +
 +    if disable_root:
 +            path = [ "service", "ssh", "allow-root" ]
-+            if client.NodeExists(client.AUTO, path):
-+                result = client.Delete(path)
-+                result = client.Commit("")
++            if client.node_exists(client.AUTO, path):
++                result = client.delete(path)
++                result = client.commit("")
 +
 +    if disable_root_opts:
 +        changed = False
 +        opts = disable_root_opts.split(',')
 +        for opt in opts:
 +            path = [ "service", "ssh", opt ]
-+            if not client.NodeExists(client.AUTO, path):
-+                result = client.Set(path)
++            if not client.node_exists(client.AUTO, path):
++                result = client.set(path)
 +                changed = True
 +        if changed:
-+            result = client.Commit("")
++            result = client.commit("")

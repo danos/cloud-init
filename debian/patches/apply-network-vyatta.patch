@@ -27,7 +27,7 @@
 +LOG = logging.getLogger(__name__)
 +
 +import os
-+from Vyatta import CfgClient
++from vyatta import configd
 +
 +def _calc_subnetlen(cidr):
 +    # convert to binary string and count the 1's
@@ -63,9 +63,9 @@
 +    if not cloud.datasource.metadata:
 +        return
 +
-+    client = CfgClient.CfgClient()
++    client = configd.Client()
 +    sessid = str(os.getpid())
-+    result = client.SessionSetup(sessid)
++    result = client.session_setup(sessid)
 +
 +    metadata = cloud.datasource.metadata
 +    network_interfaces = parse_network_interfaces(metadata['network-interfaces'])
@@ -74,17 +74,17 @@
 +        interface = network_interfaces[interface]
 +
 +        intf = [ 'interfaces', 'dataplane', interface['iface'] ]
-+        if client.NodeExists(client.AUTO, intf):
-+            result = client.Delete(intf)
++        if client.node_exists(client.AUTO, intf):
++            result = client.delete(intf)
 +        if interface.get('dhcp'):
-+            result = client.Set(intf + ['address', 'dhcp'])
++            result = client.set(intf + ['address', 'dhcp'])
 +        if interface.get('address'):
 +            len = _calc_subnetlen(interface['netmask'])
-+            result = client.Set(intf + ['address', interface['address'] + '/' + str(len)])
++            result = client.set(intf + ['address', interface['address'] + '/' + str(len)])
 +        if interface.get('gateway'):
 +            path = ['protocols', 'static', 'route', '0.0.0.0/32', 'next-hop']
-+            if client.NodeExists(client.AUTO, path):
-+                result = client.Delete(path)
-+            result = client.Set(path + [interface['gateway']])
-+        result = client.Commit("")
++            if client.node_exists(client.AUTO, path):
++                result = client.delete(path)
++            result = client.set(path + [interface['gateway']])
++        result = client.commit("")
 +    return
