@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/cloudinit/distros/vrouter.py
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,241 @@
 +# vi: ts=4 expandtab
 +#
 +#    Copyright (C) 2015 Brocade Communication Systems, Inc.
@@ -132,27 +132,36 @@
 +        Called in 'config' phase.
 +        """
 +        self.SetupSession()
++
 +        path = [ "system", "login", "user", user ]
++        if not self.client.node_exists(self.client.AUTO, path):
++            result = self.client.set(path)
++
++        path = [ "system", "login", "user", user, "full-name" ]
 +        if self.client.node_exists(self.client.AUTO, path):
 +            result = self.client.delete(path)
-+            result = self.client.commit("")
-+        result = self.client.set(path)
 +        if 'gecos' in kwargs:
-+            path = [ "system", "login", "user", user,
-+                     "full-name", kwargs['gecos']]
-+            result = self.client.set(path)
++            result = self.client.set(path + [kwargs['gecos']])
++
++        path = [ "system", "login", "user", user, "home-directory" ]
++        if self.client.node_exists(self.client.AUTO, path):
++            result = self.client.delete(path)
 +        if 'homedir' in kwargs:
-+            path = [ "system", "login", "user", user,
-+                     "home-directory", kwargs['homedir']]
-+            result = self.client.set(path)
++            result = self.client.set(path + [kwargs['homedir']])
++
++        path = [ "system", "login", "user", user, "level" ]
++        if self.client.node_exists(self.client.AUTO, path):
++            result = self.client.delete(path)
 +        if 'sudo' in kwargs:
-+            path = [ "system", "login", "user", user,
-+                     "level", "superuser"]
-+            result = self.client.set(path)
++            result = self.client.set(path + ["superuser"])
++
++        path = [ "system", "login", "user", user, "authentication",
++                 "encrypted-password" ]
++        if self.client.node_exists(self.client.AUTO, path):
++            result = self.client.delete(path)
 +        if 'passwd' in kwargs:
-+            path = [ "system", "login", "user", user, "authentication",
-+                     "encrypted-password", kwargs['passwd']]
-+            result = self.client.set(path)
++            result = self.client.set(path + [kwargs['passwd']])
++
 +        result = self.client.commit("")
 +
 +    def set_passwd(self, user, passwd, hashed=False):
@@ -174,6 +183,7 @@
 +        if not self.client.node_exists(self.client.AUTO, path):
 +            result = self.client.set(path)
 +            result = self.client.commit("")
++
 +        # members -- TODO
 +
 +    def lock_passwd(self, user):
