@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/cloudinit/distros/vrouter.py
-@@ -0,0 +1,241 @@
+@@ -0,0 +1,259 @@
 +# vi: ts=4 expandtab
 +#
 +#    Copyright (C) 2015 Brocade Communication Systems, Inc.
@@ -124,7 +124,25 @@
 +        if kwargs.get('lock_passwd', True):
 +            self.lock_passwd(name)
 +
-+        # ssh keys -- TODO
++        # Import SSH keys
++        if 'ssh_authorized_keys' in kwargs:
++            keys = set(kwargs['ssh_authorized_keys']) or []
++            self.setup_user_keys(keys, name, options=None)
++
++    def setup_user_keys(self, keys, user, options):
++        keyNo = 0
++        path = [ "system", "login", "user", user,
++                 "authentication", "public-keys" ]
++        if self.client.node_exists(self.client.AUTO, path):
++            result = self.client.delete(path)
++
++        for key in keys:
++            key = key.encode('ascii', 'ignore')
++            (keyType, keyBase64, comment) = key.split();
++            result = self.client.set(path + [str(keyNo), "key", keyBase64])
++            result = self.client.set(path + [str(keyNo), "type", keyType])
++            keyNo = keyNo + 1
++        result = self.client.commit("")
 +
 +    def add_user(self, user, **kwargs):
 +        """
