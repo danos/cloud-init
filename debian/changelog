@@ -224,11 +224,39 @@ cloud-init (0.7.7~bzr1156-1) unstable; urgency=medium
 
  -- Bastian Blank <waldi@debian.org>  Fri, 29 Jan 2016 14:28:01 +0100
 
-cloud-init (0.7.6~bzr1022-0vyatta1) UNRELEASED; urgency=low
+cloud-init (0.7.6~bzr1022-0vyatta1) trusty; urgency=low
 
+  [ Jan Blunck ]
   * Fix changelog version
+  * Add python-jinja2 as build dependency
+  * Add dh-python build dependency
+  * Add systemd conditions to cloud-init units
+  * Explicitly choose init system
+  * Add Vyatta specific distribution class
 
- -- Jan Blunck <jblunck@brocade.com>  Wed, 15 Jul 2015 13:59:56 +0200
+  [ Charles (Chas) Williams ]
+  * Changes to support adding users
+  * Disable cloud modules we don't yet support
+  * Use rsyslog.service as a dependency
+  * Remove package mirrors
+  * Fix unittest that depends on jinja2
+  * Lintian fixes
+  * Ensure init phase runs before configd
+  * Update to users and groups configuration
+  * cloud-init: use vcli to handle user scripts
+  * Update to users and groups configuration
+  * Add ssh-vyatta module to import ssh keys
+  * cloud-init: resizefs support for cloud images
+  * Configure network based on local datasource
+
+  [ Deepti Kulkarni ]
+  * Fix python api
+  * Changing the distro name
+  * python api fix
+
+  [ Eugene Tan ]
+
+ -- Eugene Tan <tane@brocade.com>  Thu, 15 Oct 2015 14:02:19 -0700
 
 cloud-init (0.7.6~bzr976-5) unstable; urgency=medium
 
