@@ -1,4 +1,14 @@
-cloud-init (0.7.6~bzr1022-0vyatta1) trusty; urgency=low
+cloud-init (0.7.6~bzr1022-0vyatta2) unstable; urgency=medium
+
+  [ Charles (Chas) Williams ]
+  * Don't recreate users
+  * Import ssh keys for users
+
+  [ Eugene Tan ]
+
+ -- Eugene Tan <tane@brocade.com>  Mon, 19 Oct 2015 11:50:23 -0700
+
+cloud-init (0.7.6~bzr1022-0vyatta1) unstable; urgency=low
 
   [ Jan Blunck ]
   * Fix changelog version
