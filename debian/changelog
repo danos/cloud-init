@@ -224,6 +224,16 @@ cloud-init (0.7.7~bzr1156-1) unstable; urgency=medium
 
  -- Bastian Blank <waldi@debian.org>  Fri, 29 Jan 2016 14:28:01 +0100
 
+cloud-init (0.7.6~bzr1022-0vyatta2) unstable; urgency=medium
+
+  [ Charles (Chas) Williams ]
+  * Don't recreate users
+  * Import ssh keys for users
+
+  [ Eugene Tan ]
+
+ -- Eugene Tan <tane@brocade.com>  Mon, 19 Oct 2015 11:50:23 -0700
+
 cloud-init (0.7.6~bzr1022-0vyatta1) trusty; urgency=low
 
   [ Jan Blunck ]
