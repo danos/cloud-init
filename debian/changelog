@@ -224,6 +224,15 @@ cloud-init (0.7.7~bzr1156-1) unstable; urgency=medium
 
  -- Bastian Blank <waldi@debian.org>  Fri, 29 Jan 2016 14:28:01 +0100
 
+cloud-init (0.7.6~bzr1022-0vyatta3) unstable; urgency=medium
+
+  [ Charles (Chas) Williams ]
+  * cloud-init: resizefs support for cloud images
+
+  [ Eugene Tan ]
+
+ -- Eugene Tan <tane@brocade.com>  Mon, 07 Dec 2015 15:13:08 -0800
+
 cloud-init (0.7.6~bzr1022-0vyatta2) unstable; urgency=medium
 
   [ Charles (Chas) Williams ]
