@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/cloudinit/distros/vrouter.py
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,249 @@
 +# vi: ts=4 expandtab
 +#
 +#    Copyright (C) 2015 Brocade Communication Systems, Inc.
@@ -74,6 +74,15 @@
 +    # before the configd system loaded the initial configuration file.
 +    #
 +
++    def _read_hostname(self, filename, default=None):
++        pass
++
++    def _read_system_hostname(self):
++        pass
++
++    def _write_hostname(self, your_hostname, out_fn):
++        pass
++
 +    def _select_hostname(self, hostname, fqdn):
 +        # Prefer the short hostname over the long
 +        # fully qualified domain name
@@ -81,40 +90,21 @@
 +            return fqdn
 +        return hostname
 +
-+    def _write_hostname(self, your_hostname, out_fn):
-+        conf = None
-+        try:
-+            # Try to update the previous one
-+            # so lets see if we can read it first.
-+            conf = self._read_hostname_conf(out_fn)
-+        except IOError:
-+            pass
-+        if not conf:
-+            conf = HostnameConf('')
-+        conf.set_hostname(your_hostname)
-+        util.write_file(out_fn, str(conf), 0644)
-+        # FIXME: append to dictionary with key "interfaces" and store it in
-+        # JSON file /var/run/vyatta-cloud-config.json
++    def set_hostname(self, hostname, fqdn=None):
++        hostname = self._select_hostname(hostname, fqdn)
++        self.SetupSession()
++        path = [ "system", "host-name" ]
 +
-+    def _read_system_hostname(self):
-+        sys_hostname = self._read_hostname(self.hostname_conf_fn)
-+        return (self.hostname_conf_fn, sys_hostname)
++        if self.client.node_exists(self.client.AUTO, path + [ hostname ]):
++            return
 +
-+    def _read_hostname_conf(self, filename):
-+        conf = HostnameConf(util.load_file(filename))
-+        conf.parse()
-+        return conf
++        if self.client.node_exists(self.client.AUTO, path):
++            result = self.client.delete(path)
++        result = self.client.set(path + [ hostname ])
++        result = self.client.commit("")
 +
-+    def _read_hostname(self, filename, default=None):
-+        hostname = None
-+        try:
-+            conf = self._read_hostname_conf(filename)
-+            hostname = conf.hostname
-+        except IOError:
-+            pass
-+        if not hostname:
-+            return default
-+        return hostname
++    def update_hostname(self, hostname, fqdn, prev_hostname_fn):
++        self.set_hostname(hostname, fqdn)
 +
 +    def create_user(self, name, **kwargs):
 +        self.add_user(name, **kwargs)
