@@ -42,7 +42,6 @@ Package: cloud-init
 Architecture: all
 Depends:
  cloud-guest-utils,
- cloud-utils-growpart,
  fdisk | util-linux (<< 2.29.2-3~),
  gdisk,
  ifupdown,
