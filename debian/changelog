@@ -200,6 +200,27 @@ cloud-init (0.7.7~bzr1156-2) unstable; urgency=medium
 
  -- Bastian Blank <bastian.blank@credativ.de>  Wed, 24 Feb 2016 17:38:38 +0100
 
+ cloud-init (0.7.7~bzr1156-1vyatta1) unstable; urgency=medium
+
+  [ Charles (Chas) Williams ]
+  * Set/update the hostname from data sources
+  * Disable rsyslog module
+  * Disable bootcmd in cloud.cfg
+  * Run cloud-init final stage after system configure
+  * Update dependency for upstream changes
+
+  [ Jan Blunck ]
+  * Add ConditionKernelCommandline to cloud-config/cloud-final
+  * Change loginuid before creating configd session
+  * Fix delete of existing value
+  * Don't fail if metadata doesn't include 'network-interfaces'
+  * Merge tag 'debian/0.7.7_bzr1156-1_bpo8+1' into update_0.7.7
+  * Fix SyntaxError: invalid token
+  * Fix TabError
+  * Fix lintian init.d-script-missing-dependency-on-remote_fs
+
+ -- Jan Blunck <jblunck@brocade.com>  Thu, 26 May 2016 21:40:45 +0200
+
 cloud-init (0.7.7~bzr1156-1) unstable; urgency=medium
 
   [ Charles Plessy ]
