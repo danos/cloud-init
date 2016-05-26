@@ -7,8 +7,6 @@ Wants=cloud-init-local.service sshd.service sshd-keygen.service
 ConditionKernelCommandLine=cloud-init
 # Triggered by IP auto-configuration
 ConditionPathExistsGlob=|/run/net-*.conf
-# Triggered by cloud-init-local
-ConditionFileNotEmpty=|/var/lib/cloud/instance/datasource
 
 [Service]
 Type=oneshot

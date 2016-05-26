@@ -3,7 +3,7 @@ Description=Apply the settings specified in cloud-config
 After=network.target rsyslog.service cloud-config.target configd.service
 Requires=cloud-config.target
 Wants=network.target
-ConditionFileNotEmpty=/var/lib/cloud/instance/datasource
+ConditionKernelCommandLine=cloud-init
 
 [Service]
 Type=oneshot

@@ -3,7 +3,7 @@ Description=Execute cloud user/final scripts
 After=network.target rsyslog.service cloud-config.service rc-local.service
 Requires=cloud-config.target config-loaded.target
 Wants=network.target
-ConditionFileNotEmpty=/var/lib/cloud/instance/datasource
+ConditionKernelCommandLine=cloud-init
 
 [Service]
 Type=oneshot
