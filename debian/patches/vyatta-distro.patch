@@ -108,7 +108,7 @@
 +        if self.client.node_exists(self.client.AUTO, path + [ hostname ]):
 +            return
 +
-+        if self.client.node_exists(self.client.AUTO, path):
++        if self.client.node_exists(self.client.AUTO, path) and not self.client.node_is_default(self.client.AUTO, path):
 +            result = self.client.delete(path)
 +        result = self.client.set(path + [ hostname ])
 +        result = self.client.commit("")
@@ -168,7 +168,7 @@
 +            result = self.client.set(path + [kwargs['homedir']])
 +
 +        path = [ "system", "login", "user", user, "level" ]
-+        if self.client.node_exists(self.client.AUTO, path):
++        if self.client.node_exists(self.client.AUTO, path) and not self.client.node_is_default(self.client.AUTO, path):
 +            result = self.client.delete(path)
 +        if 'sudo' in kwargs:
 +            result = self.client.set(path + ["superuser"])
@@ -187,12 +187,12 @@
 +        self.SetupSession()
 +        path = [ "system", "login", "user", user, "authentication" ]
 +        if hashed:
-+            path.append([ "encrypted-password", passwd ])
++            path.append([ "encrypted-password" ])
 +        else:
-+            path.append([ "plaintext-password", passwd ])
++            path.append([ "plaintext-password" ])
 +        if self.client.node_exists(self.client.AUTO, path):
 +            result = self.client.delete(path)
-+        result = self.client.set(path)
++        result = self.client.set(path + [ passwd ])
 +        result = self.client.commit("")
 +
 +    def create_group(self, name, members):

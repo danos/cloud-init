@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/cloudinit/config/cc_apply_network_vyatta.py
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,86 @@
 +# vi: ts=4 expandtab
 +
 +#    Copyright (C) 2015 Brocade Communication Systems, Inc.
@@ -60,14 +60,13 @@
 +    return network_interfaces
 +
 +def handle(name, cfg, cloud, log, _args):
-+    if not cloud.datasource.metadata:
++    metadata = cloud.datasource.metadata
++    if not metadata or not 'network-interfaces' in metadata:
 +        return
 +
 +    client = configd.Client()
 +    sessid = str(os.getpid())
 +    result = client.session_setup(sessid)
-+
-+    metadata = cloud.datasource.metadata
 +    network_interfaces = parse_network_interfaces(metadata['network-interfaces'])
 +
 +    for interface in network_interfaces:
