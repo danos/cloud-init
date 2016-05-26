@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/cloudinit/distros/vrouter.py
-@@ -0,0 +1,249 @@
+@@ -0,0 +1,259 @@
 +# vi: ts=4 expandtab
 +#
 +#    Copyright (C) 2015 Brocade Communication Systems, Inc.
@@ -32,6 +32,7 @@
 +
 +import os
 +from vyatta import configd
++from pwd import getpwnam
 +
 +class Distro(distros.Distro):
 +    locale_conf_fn = "/etc/default/locale"
@@ -48,8 +49,17 @@
 +        self._runner = helpers.Runners(paths)
 +        self.osfamily = 'vrouter'
 +
++    def __lu(self):
++        """Change loginuid so that configd permits configuration changes."""
++        uid = getpwnam('configd').pw_uid
++        lu = open('/proc/self/loginuid', 'w')
++        lu.truncate()
++        lu.write(str(uid))
++        lu.close()
++
 +    def SetupSession(self):
 +        if not self.client:
++            self.__lu()
 +            self.client = configd.Client()
 +            sessid = str(os.getpid())
 +            result = self.client.session_setup(sessid)
