@@ -3,6 +3,7 @@ disable-rhel-set-hostname-test.patch
 azure-sys-firmware-read.patch
 
 # Vyatta patches
+fix-lintian.patch
 vyatta-systemd.patch
 use-vcli-in-util-shellify.patch
 cc-resizefs-vaytta-image.patch
