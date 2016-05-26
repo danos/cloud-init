@@ -223,7 +223,7 @@
 +    #
 +
 +    def _dist_uses_systemd(self):
-+	return True
++        return True
 +
 +    def apply_locale(self, locale, out_fn=None):
 +        if not out_fn:
