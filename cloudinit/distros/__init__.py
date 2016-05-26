@@ -21,12 +21,13 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from StringIO import StringIO
+import six
+from six import StringIO
 
 import abc
-import itertools
 import os
 import re
+import stat
 
 from cloudinit import importer
 from cloudinit import log as logging
@@ -35,6 +36,7 @@ from cloudinit import type_utils
 from cloudinit import util
 
 from cloudinit.distros.parsers import hosts
+
 
 OSFAMILIES = {
     'debian': ['debian', 'ubuntu'],
@@ -51,6 +53,7 @@ LOG = logging.getLogger(__name__)
 class Distro(object):
     __metaclass__ = abc.ABCMeta
 
+    usr_lib_exec = "/usr/lib"
     hosts_fn = "/etc/hosts"
     ci_sudoers_fn = "/etc/sudoers.d/90-cloud-init-users"
     hostname_conf_fn = "/etc/hostname"
@@ -85,7 +88,14 @@ class Distro(object):
     def set_hostname(self, hostname, fqdn=None):
         writeable_hostname = self._select_hostname(hostname, fqdn)
         self._write_hostname(writeable_hostname, self.hostname_conf_fn)
-        self._apply_hostname(hostname)
+        self._apply_hostname(writeable_hostname)
+
+    def uses_systemd(self):
+        try:
+            res = os.lstat('/run/systemd/system')
+            return stat.S_ISDIR(res.st_mode)
+        except:
+            return False
 
     @abc.abstractmethod
     def package_command(self, cmd, args=None, pkgs=None):
@@ -107,12 +117,11 @@ class Distro(object):
             arch = self.get_primary_arch()
         return _get_arch_package_mirror_info(mirror_info, arch)
 
-    def get_package_mirror_info(self, arch=None,
-                                availability_zone=None):
+    def get_package_mirror_info(self, arch=None, data_source=None):
         # This resolves the package_mirrors config option
         # down to a single dict of {mirror_name: mirror_url}
         arch_info = self._get_arch_package_mirror_info(arch)
-        return _get_package_mirror_info(availability_zone=availability_zone,
+        return _get_package_mirror_info(data_source=data_source,
                                         mirror_info=arch_info)
 
     def apply_network(self, settings, bring_up=True):
@@ -159,9 +168,12 @@ class Distro(object):
             util.logexc(LOG, "Failed to non-persistently adjust the system "
                         "hostname to %s", hostname)
 
-    @abc.abstractmethod
     def _select_hostname(self, hostname, fqdn):
-        raise NotImplementedError()
+        # Prefer the short hostname over the long
+        # fully qualified domain name
+        if not hostname:
+            return fqdn
+        return hostname
 
     @staticmethod
     def expand_osfamily(family_list):
@@ -203,6 +215,15 @@ class Distro(object):
                                   and sys_hostname != hostname):
             update_files.append(sys_fn)
 
+        # If something else has changed the hostname after we set it
+        # initially, we should not overwrite those changes (we should
+        # only be setting the hostname once per instance)
+        if (sys_hostname and prev_hostname and
+                sys_hostname != prev_hostname):
+            LOG.info("%s differs from %s, assuming user maintained hostname.",
+                       prev_hostname_fn, sys_fn)
+            return
+
         # Remove duplicates (incase the previous config filename)
         # is the same as the system config filename, don't bother
         # doing it twice
@@ -216,11 +237,6 @@ class Distro(object):
             except IOError:
                 util.logexc(LOG, "Failed to write hostname %s to %s", hostname,
                             fn)
-
-        if (sys_hostname and prev_hostname and
-                sys_hostname != prev_hostname):
-            LOG.debug("%s differs from %s, assuming user maintained hostname.",
-                       prev_hostname_fn, sys_fn)
 
         # If the system hostname file name was provided set the
         # non-fqdn as the transient hostname.
@@ -268,7 +284,7 @@ class Distro(object):
             if header:
                 contents.write("%s\n" % (header))
             contents.write("%s\n" % (eh))
-            util.write_file(self.hosts_fn, contents.getvalue(), mode=0644)
+            util.write_file(self.hosts_fn, contents.getvalue(), mode=0o644)
 
     def _bring_up_interface(self, device_name):
         cmd = ['ifup', device_name]
@@ -313,6 +329,7 @@ class Distro(object):
             "gecos": '--comment',
             "homedir": '--home',
             "primary_group": '--gid',
+            "uid": '--uid',
             "groups": '--groups',
             "passwd": '--password',
             "shell": '--shell',
@@ -330,7 +347,7 @@ class Distro(object):
         redact_opts = ['passwd']
 
         # Check the values and create the command
-        for key, val in kwargs.iteritems():
+        for key, val in kwargs.items():
 
             if key in adduser_opts and val and isinstance(val, str):
                 adduser_cmd.extend([adduser_opts[key], val])
@@ -387,8 +404,20 @@ class Distro(object):
 
         # Import SSH keys
         if 'ssh_authorized_keys' in kwargs:
-            keys = set(kwargs['ssh_authorized_keys']) or []
-            ssh_util.setup_user_keys(keys, name, options=None)
+            # Try to handle this in a smart manner.
+            keys = kwargs['ssh_authorized_keys']
+            if isinstance(keys, six.string_types):
+                keys = [keys]
+            if isinstance(keys, dict):
+                keys = list(keys.values())
+            if keys is not None:
+                if not isinstance(keys, (tuple, list, set)):
+                    LOG.warn("Invalid type '%s' detected for"
+                             " 'ssh_authorized_keys', expected list,"
+                             " string, dict, or set.", type(keys))
+                else:
+                    keys = set(keys) or []
+                    ssh_util.setup_user_keys(keys, name, options=None)
 
         return True
 
@@ -452,7 +481,7 @@ class Distro(object):
                              util.make_header(base="added"),
                              "#includedir %s" % (path), '']
                     sudoers_contents = "\n".join(lines)
-                    util.write_file(sudo_base, sudoers_contents, 0440)
+                    util.write_file(sudo_base, sudoers_contents, 0o440)
                 else:
                     lines = ['', util.make_header(base="added"),
                              "#includedir %s" % (path), '']
@@ -462,7 +491,7 @@ class Distro(object):
             except IOError as e:
                 util.logexc(LOG, "Failed to write %s", sudo_base)
                 raise e
-        util.ensure_dir(path, 0750)
+        util.ensure_dir(path, 0o750)
 
     def write_sudo_rules(self, user, rules, sudo_file=None):
         if not sudo_file:
@@ -475,7 +504,7 @@ class Distro(object):
         if isinstance(rules, (list, tuple)):
             for rule in rules:
                 lines.append("%s %s" % (user, rule))
-        elif isinstance(rules, (basestring, str)):
+        elif isinstance(rules, six.string_types):
             lines.append("%s %s" % (user, rules))
         else:
             msg = "Can not create sudoers rule addition with type %r"
@@ -490,7 +519,7 @@ class Distro(object):
                 content,
             ]
             try:
-                util.write_file(sudo_file, "\n".join(contents), 0440)
+                util.write_file(sudo_file, "\n".join(contents), 0o440)
             except IOError as e:
                 util.logexc(LOG, "Failed to write sudoers file %s", sudo_file)
                 raise e
@@ -526,7 +555,7 @@ class Distro(object):
                 LOG.info("Added user '%s' to group '%s'" % (member, name))
 
 
-def _get_package_mirror_info(mirror_info, availability_zone=None,
+def _get_package_mirror_info(mirror_info, data_source=None,
                              mirror_filter=util.search_for_mirror):
     # given a arch specific 'mirror_info' entry (from package_mirrors)
     # search through the 'search' entries, and fallback appropriately
@@ -534,21 +563,28 @@ def _get_package_mirror_info(mirror_info, availability_zone=None,
     if not mirror_info:
         mirror_info = {}
 
-    ec2_az_re = ("^[a-z][a-z]-(%s)-[1-9][0-9]*[a-z]$" %
-        "north|northeast|east|southeast|south|southwest|west|northwest")
+    # ec2 availability zones are named cc-direction-[0-9][a-d] (us-east-1b)
+    # the region is us-east-1. so region = az[0:-1]
+    directions_re = '|'.join([
+        'central', 'east', 'north', 'northeast', 'northwest',
+        'south', 'southeast', 'southwest', 'west'])
+    ec2_az_re = ("^[a-z][a-z]-(%s)-[1-9][0-9]*[a-z]$" % directions_re)
 
     subst = {}
-    if availability_zone:
-        subst['availability_zone'] = availability_zone
+    if data_source and data_source.availability_zone:
+        subst['availability_zone'] = data_source.availability_zone
 
-    if availability_zone and re.match(ec2_az_re, availability_zone):
-        subst['ec2_region'] = "%s" % availability_zone[0:-1]
+        if re.match(ec2_az_re, data_source.availability_zone):
+            subst['ec2_region'] = "%s" % data_source.availability_zone[0:-1]
+
+    if data_source and data_source.region:
+        subst['region'] = data_source.region
 
     results = {}
-    for (name, mirror) in mirror_info.get('failsafe', {}).iteritems():
+    for (name, mirror) in mirror_info.get('failsafe', {}).items():
         results[name] = mirror
 
-    for (name, searchlist) in mirror_info.get('search', {}).iteritems():
+    for (name, searchlist) in mirror_info.get('search', {}).items():
         mirrors = []
         for tmpl in searchlist:
             try:
@@ -588,30 +624,30 @@ def _get_arch_package_mirror_info(package_mirrors, arch):
 # is the standard form used in the rest
 # of cloud-init
 def _normalize_groups(grp_cfg):
-    if isinstance(grp_cfg, (str, basestring)):
+    if isinstance(grp_cfg, six.string_types):
         grp_cfg = grp_cfg.strip().split(",")
-    if isinstance(grp_cfg, (list)):
+    if isinstance(grp_cfg, list):
         c_grp_cfg = {}
         for i in grp_cfg:
-            if isinstance(i, (dict)):
+            if isinstance(i, dict):
                 for k, v in i.items():
                     if k not in c_grp_cfg:
-                        if isinstance(v, (list)):
+                        if isinstance(v, list):
                             c_grp_cfg[k] = list(v)
-                        elif isinstance(v, (basestring, str)):
+                        elif isinstance(v, six.string_types):
                             c_grp_cfg[k] = [v]
                         else:
                             raise TypeError("Bad group member type %s" %
                                             type_utils.obj_name(v))
                     else:
-                        if isinstance(v, (list)):
+                        if isinstance(v, list):
                             c_grp_cfg[k].extend(v)
-                        elif isinstance(v, (basestring, str)):
+                        elif isinstance(v, six.string_types):
                             c_grp_cfg[k].append(v)
                         else:
                             raise TypeError("Bad group member type %s" %
                                             type_utils.obj_name(v))
-            elif isinstance(i, (str, basestring)):
+            elif isinstance(i, six.string_types):
                 if i not in c_grp_cfg:
                     c_grp_cfg[i] = []
             else:
@@ -619,7 +655,7 @@ def _normalize_groups(grp_cfg):
                                 type_utils.obj_name(i))
         grp_cfg = c_grp_cfg
     groups = {}
-    if isinstance(grp_cfg, (dict)):
+    if isinstance(grp_cfg, dict):
         for (grp_name, grp_members) in grp_cfg.items():
             groups[grp_name] = util.uniq_merge_sorted(grp_members)
     else:
@@ -645,29 +681,29 @@ def _normalize_groups(grp_cfg):
 # entry 'default' which will be marked as true
 # all other users will be marked as false.
 def _normalize_users(u_cfg, def_user_cfg=None):
-    if isinstance(u_cfg, (dict)):
+    if isinstance(u_cfg, dict):
         ad_ucfg = []
         for (k, v) in u_cfg.items():
-            if isinstance(v, (bool, int, basestring, str, float)):
+            if isinstance(v, (bool, int, float) + six.string_types):
                 if util.is_true(v):
                     ad_ucfg.append(str(k))
-            elif isinstance(v, (dict)):
+            elif isinstance(v, dict):
                 v['name'] = k
                 ad_ucfg.append(v)
             else:
                 raise TypeError(("Unmappable user value type %s"
                                  " for key %s") % (type_utils.obj_name(v), k))
         u_cfg = ad_ucfg
-    elif isinstance(u_cfg, (str, basestring)):
+    elif isinstance(u_cfg, six.string_types):
         u_cfg = util.uniq_merge_sorted(u_cfg)
 
     users = {}
     for user_config in u_cfg:
-        if isinstance(user_config, (str, basestring, list)):
+        if isinstance(user_config, (list,) + six.string_types):
             for u in util.uniq_merge(user_config):
                 if u and u not in users:
                     users[u] = {}
-        elif isinstance(user_config, (dict)):
+        elif isinstance(user_config, dict):
             if 'name' in user_config:
                 n = user_config.pop('name')
                 prev_config = users.get(n) or {}
@@ -768,11 +804,11 @@ def normalize_users_groups(cfg, distro):
         old_user = cfg['user']
         # Translate it into the format that is more useful
         # going forward
-        if isinstance(old_user, (basestring, str)):
+        if isinstance(old_user, six.string_types):
             old_user = {
                 'name': old_user,
             }
-        if not isinstance(old_user, (dict)):
+        if not isinstance(old_user, dict):
             LOG.warn(("Format for 'user' key must be a string or "
                       "dictionary and not %s"), type_utils.obj_name(old_user))
             old_user = {}
@@ -797,7 +833,7 @@ def normalize_users_groups(cfg, distro):
     default_user_config = util.mergemanydict([old_user, distro_user_config])
 
     base_users = cfg.get('users', [])
-    if not isinstance(base_users, (list, dict, str, basestring)):
+    if not isinstance(base_users, (list, dict) + six.string_types):
         LOG.warn(("Format for 'users' key must be a comma separated string"
                   " or a dictionary or a list and not %s"),
                  type_utils.obj_name(base_users))
@@ -806,12 +842,12 @@ def normalize_users_groups(cfg, distro):
     if old_user:
         # Ensure that when user: is provided that this user
         # always gets added (as the default user)
-        if isinstance(base_users, (list)):
+        if isinstance(base_users, list):
             # Just add it on at the end...
             base_users.append({'name': 'default'})
-        elif isinstance(base_users, (dict)):
+        elif isinstance(base_users, dict):
             base_users['default'] = dict(base_users).get('default', True)
-        elif isinstance(base_users, (str, basestring)):
+        elif isinstance(base_users, six.string_types):
             # Just append it on to be re-parsed later
             base_users += ",default"
 
@@ -836,11 +872,11 @@ def extract_default(users, default_name=None, default_config=None):
             return config['default']
 
     tmp_users = users.items()
-    tmp_users = dict(itertools.ifilter(safe_find, tmp_users))
+    tmp_users = dict(filter(safe_find, tmp_users))
     if not tmp_users:
         return (default_name, default_config)
     else:
-        name = tmp_users.keys()[0]
+        name = list(tmp_users)[0]
         config = tmp_users[name]
         config.pop('default', None)
         return (name, config)

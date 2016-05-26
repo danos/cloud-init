@@ -50,6 +50,7 @@ class Distro(distros.Distro):
     network_script_tpl = '/etc/sysconfig/network-scripts/ifcfg-%s'
     resolve_conf_fn = "/etc/resolv.conf"
     tz_local_fn = "/etc/localtime"
+    usr_lib_exec = "/usr/libexec"
 
     def __init__(self, name, cfg, paths):
         distros.Distro.__init__(self, name, cfg, paths)
@@ -71,7 +72,8 @@ class Distro(distros.Distro):
         nameservers = []
         searchservers = []
         dev_names = entries.keys()
-        for (dev, info) in entries.iteritems():
+        use_ipv6 = False
+        for (dev, info) in entries.items():
             net_fn = self.network_script_tpl % (dev)
             net_cfg = {
                 'DEVICE': dev,
@@ -83,6 +85,13 @@ class Distro(distros.Distro):
                 'MACADDR': info.get('hwaddress'),
                 'ONBOOT': _make_sysconfig_bool(info.get('auto')),
             }
+            if info.get('inet6'):
+                use_ipv6 = True
+                net_cfg.update({
+                    'IPV6INIT': _make_sysconfig_bool(True),
+                    'IPV6ADDR': info.get('ipv6').get('address'),
+                    'IPV6_DEFAULTGW': info.get('ipv6').get('gateway'),
+                })
             rhel_util.update_sysconfig_file(net_fn, net_cfg)
             if 'dns-nameservers' in info:
                 nameservers.extend(info['dns-nameservers'])
@@ -95,18 +104,15 @@ class Distro(distros.Distro):
             net_cfg = {
                 'NETWORKING': _make_sysconfig_bool(True),
             }
+            # If IPv6 interface present, enable ipv6 networking
+            if use_ipv6:
+                net_cfg['NETWORKING_IPV6'] = _make_sysconfig_bool(True)
+                net_cfg['IPV6_AUTOCONF'] = _make_sysconfig_bool(False)
             rhel_util.update_sysconfig_file(self.network_conf_fn, net_cfg)
         return dev_names
 
-    def _dist_uses_systemd(self):
-        # Fedora 18 and RHEL 7 were the first adopters in their series
-        (dist, vers) = util.system_info()['dist'][:2]
-        major = (int)(vers.split('.')[0])
-        return ((dist.startswith('Red Hat Enterprise Linux') and major >= 7)
-                or (dist.startswith('Fedora') and major >= 18))
-
     def apply_locale(self, locale, out_fn=None):
-        if self._dist_uses_systemd():
+        if self.uses_systemd():
             if not out_fn:
                 out_fn = self.systemd_locale_conf_fn
             out_fn = self.systemd_locale_conf_fn
@@ -119,7 +125,11 @@ class Distro(distros.Distro):
         rhel_util.update_sysconfig_file(out_fn, locale_cfg)
 
     def _write_hostname(self, hostname, out_fn):
-        if self._dist_uses_systemd():
+        # systemd will never update previous-hostname for us, so
+        # we need to do it ourselves
+        if self.uses_systemd() and out_fn.endswith('/previous-hostname'):
+            util.write_file(out_fn, hostname)
+        elif self.uses_systemd():
             util.subp(['hostnamectl', 'set-hostname', str(hostname)])
         else:
             host_cfg = {
@@ -135,14 +145,16 @@ class Distro(distros.Distro):
         return hostname
 
     def _read_system_hostname(self):
-        if self._dist_uses_systemd():
+        if self.uses_systemd():
             host_fn = self.systemd_hostname_conf_fn
         else:
             host_fn = self.hostname_conf_fn
         return (host_fn, self._read_hostname(host_fn))
 
     def _read_hostname(self, filename, default=None):
-        if self._dist_uses_systemd():
+        if self.uses_systemd() and filename.endswith('/previous-hostname'):
+            return util.load_file(filename).strip()
+        elif self.uses_systemd():
             (out, _err) = util.subp(['hostname'])
             if len(out):
                 return out
@@ -163,7 +175,7 @@ class Distro(distros.Distro):
 
     def set_timezone(self, tz):
         tz_file = self._find_tz_file(tz)
-        if self._dist_uses_systemd():
+        if self.uses_systemd():
             # Currently, timedatectl complains if invoked during startup
             # so for compatibility, create the link manually.
             util.del_file(self.tz_local_fn)
