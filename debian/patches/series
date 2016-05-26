@@ -6,6 +6,9 @@
 fix-sysvinit-dependencies.patch
 cloud-init-before-chronyd.patch
 0008-opennebula-also-exclude-epochseconds-from-changed-en.patch
+
+# Vyatta patches
+fix-lintian.patch
 use-vcli-in-util-shellify.patch
 cc-resizefs-vaytta-image.patch
 cc-growpart-respect-defaults.patch
