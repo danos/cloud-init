@@ -210,12 +210,12 @@
 +        Called in 'config' phase.
 +        """
 +        self.SetupSession()
-+        for passwdType in [ "encrypted-password", "plaintext-password" ]:
-+            path = [ "system", "login", "user", user, "authentication",
-+                     passwdType ]
-+            if self.client.node_exists(self.client.AUTO, path):
-+                result = self.client.delete(path)
-+                result = self.client.commit("")
++        path = [ "system", "login", "user", user, "authentication", "encrypted-password" ]
++        if self.client.node_exists(self.client.AUTO, path):
++            result = self.client.delete(path)
++
++        result = self.client.set(path + [ "*" ])
++        result = self.client.commit("")
 +
 +    #
 +    # The following functions are called during 'config phase' which is executed
