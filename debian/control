@@ -37,6 +37,7 @@ Package: cloud-init
 Architecture: all
 Depends: lsb-release,
          ifupdown,
+         lu,
          procps,
          python3-vyatta-cfgclient,
          ${misc:Depends},

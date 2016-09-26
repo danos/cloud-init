@@ -1,6 +1,6 @@
 --- a/systemd/cloud-config.service
 +++ b/systemd/cloud-config.service
-@@ -1,7 +1,8 @@
+@@ -1,11 +1,12 @@
  [Unit]
  Description=Apply the settings specified in cloud-config
 -After=network-online.target cloud-config.target syslog.target
@@ -10,9 +10,14 @@
  
  [Service]
  Type=oneshot
+-ExecStart=/usr/bin/cloud-init modules --mode=config
++ExecStart=/opt/vyatta/sbin/lu -user configd -- /usr/bin/cloud-init modules --mode=config
+ RemainAfterExit=yes
+ TimeoutSec=0
+ 
 --- a/systemd/cloud-final.service
 +++ b/systemd/cloud-final.service
-@@ -2,6 +2,7 @@
+@@ -2,10 +2,11 @@
  Description=Execute cloud user/final scripts
  After=network-online.target cloud-config.service syslog.target rc-local.service
  Wants=network-online.target cloud-config.service
@@ -20,6 +25,11 @@
  
  [Service]
  Type=oneshot
+-ExecStart=/usr/bin/cloud-init modules --mode=final
++ExecStart=/opt/vyatta/sbin/lu -user configd -- /usr/bin/cloud-init modules --mode=final
+ RemainAfterExit=yes
+ TimeoutSec=0
+ 
 --- a/systemd/cloud-init-local.service
 +++ b/systemd/cloud-init-local.service
 @@ -2,6 +2,7 @@
