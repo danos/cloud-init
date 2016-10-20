@@ -113,11 +113,11 @@
 +                result = client.commit("")
 +            path = [ "system", "login", "user", user,
 +                     "authentication", "public-keys", str(keyNo),
-+                     "key", keyBase64 ]
++                     "key", keyBase64.decode('ascii') ]
 +            result = client.set(path)
 +            path = [ "system", "login", "user", user,
 +                     "authentication", "public-keys", str(keyNo),
-+                     "type", keyType ]
++                     "type", keyType.decode('ascii') ]
 +            result = client.set(path)
 +            keyNo = keyNo + 1
 +        result = client.commit("")
