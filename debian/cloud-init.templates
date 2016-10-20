@@ -1,6 +1,6 @@
 Template: cloud-init/datasources
 Type: multiselect
-Default: NoCloud, AltCloud, CloudStack, ConfigDrive, Ec2, MAAS, OVF, GCE, None
+Default: NoCloud, ConfigDrive, OVF, GCE, Ec2, None
 Choices-C: NoCloud, AltCloud, CloudStack, ConfigDrive, Ec2, MAAS, OVF, GCE, None
 __Choices: /var/lib/cloud/seed only, AltCloud Config Drive, CloudStack metadata service, OpenStack Config Drive, EC2 Metadata service, Ubuntu MAAS, OVF Transports, Google Cloud Engine, Failsafe datasource
 _Description: Data sources to read from:
