@@ -139,8 +139,8 @@
 +        for key in keys:
 +            key = key.encode('ascii', 'ignore')
 +            (keyType, keyBase64, comment) = key.split();
-+            result = self.client.set(path + [str(keyNo), "key", keyBase64])
-+            result = self.client.set(path + [str(keyNo), "type", keyType])
++            result = self.client.set(path + [str(keyNo), "key", keyBase64.decode('ascii')])
++            result = self.client.set(path + [str(keyNo), "type", keyType.decode('ascii')])
 +            keyNo = keyNo + 1
 +        result = self.client.commit("")
 +
