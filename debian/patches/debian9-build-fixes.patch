@@ -1,0 +1,104 @@
+--- a/tox.ini
++++ b/tox.ini
+@@ -1,5 +1,5 @@
+ [tox]
+-envlist = py26,py27,py34
++envlist = py26,py27,py34,py35
+ recreate = True
+ 
+ [testenv]
+--- a/cloudinit/sources/DataSourceGCE.py
++++ b/cloudinit/sources/DataSourceGCE.py
+@@ -31,7 +31,7 @@ REQUIRED_FIELDS = ('instance-id', 'avail
+ 
+ 
+ class GoogleMetadataFetcher(object):
+-    headers = {'X-Google-Metadata-Request': True}
++    headers = {'X-Google-Metadata-Request': 'True'}
+ 
+     def __init__(self, metadata_address):
+         self.metadata_address = metadata_address
+--- a/tests/unittests/test_templating.py
++++ b/tests/unittests/test_templating.py
+@@ -70,8 +70,8 @@ $a,$b'''
+         self.assertEquals("1,2", c)
+ 
+     def test_render_jinja(self):
+-	if not templater.JINJA_AVAILABLE:
+-		return True
++        if not templater.JINJA_AVAILABLE:
++            return True
+         blob = '''## template:jinja
+ {{a}},{{b}}'''
+         c = templater.render_string(blob, {"a": 1, "b": 2})
+--- a/tests/unittests/test_datasource/test_cloudstack.py
++++ b/tests/unittests/test_datasource/test_cloudstack.py
+@@ -2,6 +2,9 @@ from cloudinit import helpers
+ from cloudinit.sources.DataSourceCloudStack import DataSourceCloudStack
+ from ..helpers import TestCase
+ 
++from .. import helpers as test_helpers
++from cloudinit.sources.DataSourceCloudStack import get_vr_address as get_vr_address
++
+ try:
+     from unittest import mock
+ except ImportError:
+@@ -29,18 +32,21 @@ class TestCloudStackPasswordFetching(Tes
+                        subp))
+         return subp
+ 
++    @test_helpers.skipIf(not get_vr_address(), "no default router")
+     def test_empty_password_doesnt_create_config(self):
+         self._set_password_server_response('')
+         ds = DataSourceCloudStack({}, None, helpers.Paths({}))
+         ds.get_data()
+         self.assertEqual({}, ds.get_config_obj())
+ 
++    @test_helpers.skipIf(not get_vr_address(), "no default router")
+     def test_saved_password_doesnt_create_config(self):
+         self._set_password_server_response('saved_password')
+         ds = DataSourceCloudStack({}, None, helpers.Paths({}))
+         ds.get_data()
+         self.assertEqual({}, ds.get_config_obj())
+ 
++    @test_helpers.skipIf(not get_vr_address(), "no default router")
+     def test_password_sets_password(self):
+         password = 'SekritSquirrel'
+         self._set_password_server_response(password)
+@@ -48,11 +54,13 @@ class TestCloudStackPasswordFetching(Tes
+         ds.get_data()
+         self.assertEqual(password, ds.get_config_obj()['password'])
+ 
++    @test_helpers.skipIf(not get_vr_address(), "no default router")
+     def test_bad_request_doesnt_stop_ds_from_working(self):
+         self._set_password_server_response('bad_request')
+         ds = DataSourceCloudStack({}, None, helpers.Paths({}))
+         self.assertTrue(ds.get_data())
+ 
++    @test_helpers.skipIf(not get_vr_address(), "no default router")
+     def assertRequestTypesSent(self, subp, expected_request_types):
+         request_types = []
+         for call in subp.call_args_list:
+@@ -62,6 +70,7 @@ class TestCloudStackPasswordFetching(Tes
+                     request_types.append(arg.split()[1])
+         self.assertEqual(expected_request_types, request_types)
+ 
++    @test_helpers.skipIf(not get_vr_address(), "no default router")
+     def test_valid_response_means_password_marked_as_saved(self):
+         password = 'SekritSquirrel'
+         subp = self._set_password_server_response(password)
+@@ -76,11 +85,14 @@ class TestCloudStackPasswordFetching(Tes
+         ds.get_data()
+         self.assertRequestTypesSent(subp, ['send_my_password'])
+ 
++    @test_helpers.skipIf(not get_vr_address(), "no default router")
+     def test_password_not_saved_if_empty(self):
+         self._check_password_not_saved_for('')
+ 
++    @test_helpers.skipIf(not get_vr_address(), "no default router")
+     def test_password_not_saved_if_already_saved(self):
+         self._check_password_not_saved_for('saved_password')
+ 
++    @test_helpers.skipIf(not get_vr_address(), "no default router")
+     def test_password_not_saved_if_bad_request(self):
+         self._check_password_not_saved_for('bad_request')
