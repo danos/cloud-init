@@ -11,3 +11,4 @@ jinja2-unittest-failure-fix
 vyatta-distro.patch
 cc-ssh-vytta-config-module.patch
 apply-network-vyatta.patch
+debian9-build-fixes.patch
