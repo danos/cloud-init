@@ -200,6 +200,31 @@ cloud-init (0.7.7~bzr1156-2) unstable; urgency=medium
 
  -- Bastian Blank <bastian.blank@credativ.de>  Wed, 24 Feb 2016 17:38:38 +0100
 
+cloud-init (0.7.7~bzr1156-1vyatta2) unstable; urgency=medium
+
+  [ Jan Blunck ]
+  * Let cloud-config.service run after config-loaded.target
+  * Start cloud-init.service before vyatta-dataplane.service
+  * Fix lock-passwd to prevent passwd based login
+
+  [ Charles (Chas) Williams ]
+  * Run config and final stages with lu
+
+  [ Deepti Kulkarni ]
+  * Add vyatta module for ssh - ssh_vyatta
+
+  [ Daniel Gollub ]
+  * Applying SSH credentails requires ascii decode
+  * Disable CloudStack and other unsupported platforms
+
+  [ Glenn Serre ]
+  * fix ssh-authorized-keys setting from user-data
+
+  [ Charles (Chas) Williams ]
+  * Build fixes for Debian 9
+
+ -- Charles (Chas) Williams <ciwillia@brocade.com>  Thu, 12 Jan 2017 18:05:24 -0500
+
  cloud-init (0.7.7~bzr1156-1vyatta1) unstable; urgency=medium
 
   [ Charles (Chas) Williams ]
