@@ -7,6 +7,11 @@ fix-sysvinit-dependencies.patch
 cloud-init-before-chronyd.patch
 0008-opennebula-also-exclude-epochseconds-from-changed-en.patch
 
+# Vyatta systemd unit patches
+Add-systemd-conditions-to-cloud-init-units.patch
+Changes-to-support-adding-users.patch
+Start-cloud-init.service-before-vyatta-dataplane.patch
+
 # Vyatta patches
 fix-lintian.patch
 use-vcli-in-util-shellify.patch
@@ -16,8 +21,4 @@ vyatta-distro.patch
 cc-ssh-vytta-config-module.patch
 apply-network-vyatta.patch
 debian9-build-fixes.patch
-
-# Vyatta systemd unit patches
-Add-systemd-conditions-to-cloud-init-units.patch
-Changes-to-support-adding-users.patch
-Start-cloud-init.service-before-vyatta-dataplane.patch
+skip-blkid-tests.patch

@@ -18,3 +18,14 @@
      escaped = "%s%s%s%s" % ("'", '\\', "'", "'")
      cmds_made = 0
      for args in cmdlist:
+--- a/tests/unittests/test_handler/test_handler_runcmd.py
++++ b/tests/unittests/test_handler/test_handler_runcmd.py
+@@ -95,7 +95,7 @@
+         runcmd_file = os.path.join(
+             self.new_root,
+             'var/lib/cloud/instances/iid-datasource-none/scripts/runcmd')
+-        self.assertEqual("#!/bin/sh\n'ls' '/'\n", util.load_file(runcmd_file))
++        self.assertEqual("#!/bin/vcli -f\n'ls' '/'\n", util.load_file(runcmd_file))
+         file_stat = os.stat(runcmd_file)
+         self.assertEqual(0o700, stat.S_IMODE(file_stat.st_mode))
+ 
