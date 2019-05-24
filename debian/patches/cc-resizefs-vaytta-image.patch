@@ -1,7 +1,7 @@
 --- a/cloudinit/config/cc_resizefs.py
 +++ b/cloudinit/config/cc_resizefs.py
-@@ -90,7 +90,7 @@ def handle(name, cfg, _cloud, log, args)
-     util.ensure_dir(resize_root_d)
+@@ -233,7 +233,7 @@
+         return
  
      # TODO(harlowja): allow what is to be resized to be configurable??
 -    resize_what = "/"

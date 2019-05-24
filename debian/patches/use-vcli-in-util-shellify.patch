@@ -1,6 +1,6 @@
 --- a/cloudinit/util.py
 +++ b/cloudinit/util.py
-@@ -614,7 +614,7 @@ def runparts(dirp, skip_no_exist=True, e
+@@ -832,7 +832,7 @@
          if os.path.isfile(exe_path) and os.access(exe_path, os.X_OK):
              attempted.append(exe_path)
              try:
@@ -9,8 +9,8 @@
              except ProcessExecutionError as e:
                  logexc(LOG, "Failed running %s [%s]", exe_path, e.exit_code)
                  failed.append(e)
-@@ -1595,7 +1595,7 @@ def abs_join(*paths):
- def shellify(cmdlist, add_header=True):
+@@ -2054,7 +2054,7 @@
+ 
      content = ''
      if add_header:
 -        content += "#!/bin/sh\n"

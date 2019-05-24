@@ -1,7 +1,7 @@
 --- a/tests/unittests/test_templating.py
 +++ b/tests/unittests/test_templating.py
-@@ -60,6 +60,8 @@ $a,$b'''
-         self.assertEquals("1,2", c)
+@@ -69,6 +69,8 @@
+         self.assertEqual("1,2", c)
  
      def test_render_jinja(self):
 +	if not templater.JINJA_AVAILABLE:
