@@ -1,0 +1,47 @@
+Changes to support adding users
+
+Create dependency for config state on configd.service
+
+---
+
+--- a/systemd/cloud-config.service.tmpl
++++ b/systemd/cloud-config.service.tmpl
+@@ -1,14 +1,14 @@
+ ## template:jinja
+ [Unit]
+ Description=Apply the settings specified in cloud-config
+-After=network-online.target cloud-config.target
++After=network-online.target cloud-config.target configd-loaded.target
+ After=snapd.seeded.service
+ Wants=network-online.target cloud-config.target
+ ConditionFileNotEmpty=/var/lib/cloud/instance/datasource
+ 
+ [Service]
+ Type=oneshot
+-ExecStart=/usr/bin/cloud-init modules --mode=config
++ExecStart=/usr/bin/sg vyattacfg "/usr/bin/cloud-init modules --mode=config"
+ RemainAfterExit=yes
+ TimeoutSec=0
+ 
+--- a/systemd/cloud-final.service.tmpl
++++ b/systemd/cloud-final.service.tmpl
+@@ -12,7 +12,7 @@
+ 
+ [Service]
+ Type=oneshot
+-ExecStart=/usr/bin/cloud-init modules --mode=final
++ExecStart=/usr/bin/sg vyattacfg "/usr/bin/cloud-init modules --mode=final"
+ RemainAfterExit=yes
+ TimeoutSec=0
+ KillMode=process
+--- a/systemd/cloud-init.service.tmpl
++++ b/systemd/cloud-init.service.tmpl
+@@ -40,7 +40,7 @@
+ 
+ [Service]
+ Type=oneshot
+-ExecStart=/usr/bin/cloud-init init
++ExecStart=/usr/bin/sg vyattacfg "/usr/bin/cloud-init init"
+ RemainAfterExit=yes
+ TimeoutSec=0
+ 

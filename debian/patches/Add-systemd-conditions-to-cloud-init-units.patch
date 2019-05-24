@@ -1,0 +1,52 @@
+Add systemd conditions to cloud-init units
+
+cloud-init(-local) should only start if we find "cloud-init" on the kernel
+command line. cloud-config and cloud-final should only start if we found
+a datasource.
+
+---
+
+--- a/systemd/cloud-config.service.tmpl
++++ b/systemd/cloud-config.service.tmpl
+@@ -4,6 +4,7 @@
+ After=network-online.target cloud-config.target
+ After=snapd.seeded.service
+ Wants=network-online.target cloud-config.target
++ConditionFileNotEmpty=/var/lib/cloud/instance/datasource
+ 
+ [Service]
+ Type=oneshot
+--- a/systemd/cloud-final.service.tmpl
++++ b/systemd/cloud-final.service.tmpl
+@@ -7,6 +7,7 @@
+ Before=apt-daily.service
+ {% endif %}
+ Wants=network-online.target cloud-config.service
++ConditionFileNotEmpty=/var/lib/cloud/instance/datasource
+ 
+ 
+ [Service]
+--- a/systemd/cloud-init-local.service.tmpl
++++ b/systemd/cloud-init-local.service.tmpl
+@@ -14,6 +14,7 @@
+ Conflicts=shutdown.target
+ {% endif %}
+ RequiresMountsFor=/var/lib/cloud
++ConditionKernelCommandLine=cloud-init
+ 
+ [Service]
+ Type=oneshot
+--- a/systemd/cloud-init.service.tmpl
++++ b/systemd/cloud-init.service.tmpl
+@@ -32,6 +32,11 @@
+ Conflicts=shutdown.target
+ {% endif %}
+ Before=systemd-user-sessions.service
++ConditionKernelCommandLine=cloud-init
++# Triggered by IP auto-configuration
++ConditionPathExistsGlob=|/run/net-*.conf
++# Triggered by cloud-init-local
++ConditionFileNotEmpty=|/var/lib/cloud/instance/datasource
+ 
+ [Service]
+ Type=oneshot
