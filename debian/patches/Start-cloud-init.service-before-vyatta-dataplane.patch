@@ -10,11 +10,10 @@ May 27 08:32:14 vyatta cloud-init[2033]: [CLOUDINIT] url_helper.py[WARNING]: Cal
 
 --- a/systemd/cloud-init.service.tmpl
 +++ b/systemd/cloud-init.service.tmpl
-@@ -32,7 +32,7 @@
+@@ -32,6 +32,7 @@
  Conflicts=shutdown.target
  {% endif %}
  Before=systemd-user-sessions.service
--Before=configd.service
 +Before=vyatta-dataplane.service
  ConditionKernelCommandLine=cloud-init
  # Triggered by IP auto-configuration

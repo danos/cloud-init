@@ -20,7 +20,4 @@ debian9-build-fixes.patch
 # Vyatta systemd unit patches
 Add-systemd-conditions-to-cloud-init-units.patch
 Changes-to-support-adding-users.patch
-Ensure-init-phase-runs-before-configd.patch
-Add-ConditionKernelCommandline-to-cloud-config-cloud.patch
 Start-cloud-init.service-before-vyatta-dataplane.patch
-Run-config-and-final-stages-with-lu.patch

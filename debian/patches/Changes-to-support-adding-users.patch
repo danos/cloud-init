@@ -11,15 +11,15 @@ Create dependency for config state on configd.service
  [Unit]
  Description=Apply the settings specified in cloud-config
 -After=network-online.target cloud-config.target
-+After=network-online.target cloud-config.target configd-loaded.target
++After=network-online.target cloud-config.target config-loaded.target
  After=snapd.seeded.service
  Wants=network-online.target cloud-config.target
- ConditionFileNotEmpty=/var/lib/cloud/instance/datasource
+ ConditionKernelCommandLine=cloud-init
  
  [Service]
  Type=oneshot
 -ExecStart=/usr/bin/cloud-init modules --mode=config
-+ExecStart=/usr/bin/sg vyattacfg "/usr/bin/cloud-init modules --mode=config"
++ExecStart=/opt/vyatta/sbin/lu -user configd -- /usr/bin/cloud-init modules --mode=config
  RemainAfterExit=yes
  TimeoutSec=0
  
@@ -30,18 +30,7 @@ Create dependency for config state on configd.service
  [Service]
  Type=oneshot
 -ExecStart=/usr/bin/cloud-init modules --mode=final
-+ExecStart=/usr/bin/sg vyattacfg "/usr/bin/cloud-init modules --mode=final"
++ExecStart=/opt/vyatta/sbin/lu -user configd -- /usr/bin/cloud-init modules --mode=final
  RemainAfterExit=yes
  TimeoutSec=0
  KillMode=process
---- a/systemd/cloud-init.service.tmpl
-+++ b/systemd/cloud-init.service.tmpl
-@@ -40,7 +40,7 @@
- 
- [Service]
- Type=oneshot
--ExecStart=/usr/bin/cloud-init init
-+ExecStart=/usr/bin/sg vyattacfg "/usr/bin/cloud-init init"
- RemainAfterExit=yes
- TimeoutSec=0
- 
