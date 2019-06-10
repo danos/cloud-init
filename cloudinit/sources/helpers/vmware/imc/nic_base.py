@@ -1,24 +1,12 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2015 Canonical Ltd.
+# Copyright (C) 2015 VMware Inc.
 #
-#    Copyright (C) 2015 Canonical Ltd.
-#    Copyright (C) 2015 VMware Inc.
+# Author: Sankar Tanguturi <stanguturi@vmware.com>
 #
-#    Author: Sankar Tanguturi <stanguturi@vmware.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 
-class NicBase:
+class NicBase(object):
     """
     Define what are expected of each nic.
     The following properties should be provided in an implementation class.
@@ -93,7 +81,7 @@ class NicBase:
         raise NotImplementedError('Check constraints on properties')
 
 
-class StaticIpv4Base:
+class StaticIpv4Base(object):
     """
     Define what are expected of a static IPv4 setting
     The following properties should be provided in an implementation class.
@@ -124,7 +112,7 @@ class StaticIpv4Base:
         raise NotImplementedError('Ipv4 GATEWAY')
 
 
-class StaticIpv6Base:
+class StaticIpv6Base(object):
     """Define what are expected of a static IPv6 setting
     The following properties should be provided in an implementation class.
     """
@@ -152,3 +140,5 @@ class StaticIpv6Base:
         @return (str): the IPv6GATEWAY setting
         """
         raise NotImplementedError('Ipv6 GATEWAY')
+
+# vi: ts=4 expandtab

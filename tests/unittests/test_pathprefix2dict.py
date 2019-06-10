@@ -1,6 +1,8 @@
+# This file is part of cloud-init. See LICENSE file for license information.
+
 from cloudinit import util
 
-from .helpers import TestCase, populate_dir
+from cloudinit.tests.helpers import TestCase, populate_dir
 
 import shutil
 import tempfile

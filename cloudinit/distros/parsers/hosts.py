@@ -1,20 +1,8 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2012 Yahoo! Inc.
 #
-#    Copyright (C) 2012 Yahoo! Inc.
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
 #
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 from six import StringIO
 
@@ -22,8 +10,8 @@ from cloudinit.distros.parsers import chop_comment
 
 
 # See: man hosts
-# or http://unixhelp.ed.ac.uk/CGI/man-cgi?hosts
-# or http://tinyurl.com/6lmox3
+# or https://linux.die.net/man/5/hosts
+# or https://www.freebsd.org/doc/en_US.ISO8859-1/books/handbook/configtuning-configfiles.html # noqa
 class HostsConf(object):
     def __init__(self, text):
         self._text = text
@@ -90,3 +78,5 @@ class HostsConf(object):
                 pieces = "\t".join(pieces)
                 contents.write("%s%s\n" % (pieces, tail))
         return contents.getvalue()
+
+# vi: ts=4 expandtab

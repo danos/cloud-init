@@ -1,33 +1,36 @@
+# Copyright (C) 2015-2016 Bigstep Cloud Ltd.
 #
-#    Copyright (C) 2015-2016 Bigstep Cloud Ltd.
+# Author: Alexandru Sirbu <alexandru.sirbu@bigstep.com>
 #
-#    Author: Alexandru Sirbu <alexandru.sirbu@bigstep.com>
-#
+# This file is part of cloud-init. See LICENSE file for license information.
 
-import json
 import errno
+import json
 
 from cloudinit import log as logging
 from cloudinit import sources
-from cloudinit import util
 from cloudinit import url_helper
+from cloudinit import util
 
 LOG = logging.getLogger(__name__)
 
 
 class DataSourceBigstep(sources.DataSource):
+
+    dsname = 'Bigstep'
+
     def __init__(self, sys_cfg, distro, paths):
         sources.DataSource.__init__(self, sys_cfg, distro, paths)
         self.metadata = {}
         self.vendordata_raw = ""
         self.userdata_raw = ""
 
-    def get_data(self, apply_filter=False):
+    def _get_data(self, apply_filter=False):
         url = get_url_from_file()
         if url is None:
             return False
         response = url_helper.readurl(url)
-        decoded = json.loads(response.contents)
+        decoded = json.loads(response.contents.decode())
         self.metadata = decoded["metadata"]
         self.vendordata_raw = decoded["vendordata_raw"]
         self.userdata_raw = decoded["userdata_raw"]
@@ -46,6 +49,7 @@ def get_url_from_file():
             raise
     return content
 
+
 # Used to match classes to dependencies
 datasources = [
     (DataSourceBigstep, (sources.DEP_FILESYSTEM, sources.DEP_NETWORK)),
@@ -55,3 +59,5 @@ datasources = [
 # Return a list of data sources that match this set of dependencies
 def get_datasource_list(depends):
     return sources.list_from_depends(depends, datasources)
+
+# vi: ts=4 expandtab

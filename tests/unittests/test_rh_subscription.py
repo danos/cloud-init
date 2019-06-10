@@ -1,11 +1,17 @@
-from cloudinit import util
-from cloudinit.config import cc_rh_subscription
+# This file is part of cloud-init. See LICENSE file for license information.
+
+"""Tests for registering RHEL subscription via rh_subscription."""
+
+import copy
 import logging
-import mock
-import unittest
+
+from cloudinit.config import cc_rh_subscription
+from cloudinit import util
+
+from cloudinit.tests.helpers import TestCase, mock
 
 
-class GoodTests(unittest.TestCase):
+class GoodTests(TestCase):
     def setUp(self):
         super(GoodTests, self).setUp()
         self.name = "cc_rh_subscription"
@@ -63,6 +69,20 @@ class GoodTests(unittest.TestCase):
         self.assertEqual(self.SM.log_success.call_count, 1)
         self.assertEqual(self.SM._sub_man_cli.call_count, 2)
 
+    @mock.patch.object(cc_rh_subscription.SubscriptionManager, "_getRepos")
+    @mock.patch.object(cc_rh_subscription.SubscriptionManager, "_sub_man_cli")
+    def test_update_repos_disable_with_none(self, m_sub_man_cli, m_get_repos):
+        cfg = copy.deepcopy(self.config)
+        m_get_repos.return_value = ([], ['repo1'])
+        m_sub_man_cli.return_value = (b'', b'')
+        cfg['rh_subscription'].update(
+            {'enable-repo': ['repo1'], 'disable-repo': None})
+        mysm = cc_rh_subscription.SubscriptionManager(cfg)
+        self.assertEqual(True, mysm.update_repos())
+        m_get_repos.assert_called_with()
+        self.assertEqual(m_sub_man_cli.call_args_list,
+                         [mock.call(['repos', '--enable=repo1'])])
+
     def test_full_registration(self):
         '''
         Registration with auto-attach, service-level, adding pools,
@@ -70,8 +90,8 @@ class GoodTests(unittest.TestCase):
         '''
         call_lists = []
         call_lists.append(['attach', '--pool=pool1', '--pool=pool3'])
-        call_lists.append(['repos', '--enable=repo2', '--enable=repo3',
-                           '--disable=repo5'])
+        call_lists.append(['repos', '--disable=repo5', '--enable=repo2',
+                           '--enable=repo3'])
         call_lists.append(['attach', '--auto', '--servicelevel=self-support'])
         self.SM.log_success = mock.MagicMock()
         reg = "The system has been registered with ID:" \
@@ -92,7 +112,7 @@ class GoodTests(unittest.TestCase):
         self.assertEqual(self.SM._sub_man_cli.call_count, 9)
 
 
-class TestBadInput(unittest.TestCase):
+class TestBadInput(TestCase):
     name = "cc_rh_subscription"
     cloud_init = None
     log = logging.getLogger("bad_tests")
@@ -211,3 +231,5 @@ class TestBadInput(unittest.TestCase):
         self.SM._sub_man_cli.assert_called_with(['identity'])
         self.assertEqual(self.SM.log_warn.call_count, 4)
         self.assertEqual(self.SM._sub_man_cli.call_count, 1)
+
+# vi: ts=4 expandtab

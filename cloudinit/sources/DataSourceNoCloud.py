@@ -1,29 +1,18 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2009-2010 Canonical Ltd.
+# Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
+# Copyright (C) 2012 Yahoo! Inc.
 #
-#    Copyright (C) 2009-2010 Canonical Ltd.
-#    Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
-#    Copyright (C) 2012 Yahoo! Inc.
+# Author: Scott Moser <scott.moser@canonical.com>
+# Author: Juerg Hafliger <juerg.haefliger@hp.com>
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
 #
-#    Author: Scott Moser <scott.moser@canonical.com>
-#    Author: Juerg Hafliger <juerg.haefliger@hp.com>
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 import errno
 import os
 
 from cloudinit import log as logging
+from cloudinit.net import eni
 from cloudinit import sources
 from cloudinit import util
 
@@ -31,11 +20,12 @@ LOG = logging.getLogger(__name__)
 
 
 class DataSourceNoCloud(sources.DataSource):
+
+    dsname = "NoCloud"
+
     def __init__(self, sys_cfg, distro, paths):
         sources.DataSource.__init__(self, sys_cfg, distro, paths)
-        self.dsmode = 'local'
         self.seed = None
-        self.cmdline_id = "ds=nocloud"
         self.seed_dirs = [os.path.join(paths.seed_dir, 'nocloud'),
                           os.path.join(paths.seed_dir, 'nocloud-net')]
         self.seed_dir = None
@@ -45,7 +35,7 @@ class DataSourceNoCloud(sources.DataSource):
         root = sources.DataSource.__str__(self)
         return "%s [seed=%s][dsmode=%s]" % (root, self.seed, self.dsmode)
 
-    def get_data(self):
+    def _get_data(self):
         defaults = {
             "instance-id": "nocloud",
             "dsmode": self.dsmode,
@@ -53,15 +43,27 @@ class DataSourceNoCloud(sources.DataSource):
 
         found = []
         mydata = {'meta-data': {}, 'user-data': "", 'vendor-data': "",
-                  'network-config': {}}
+                  'network-config': None}
+
+        try:
+            # Parse the system serial label from dmi. If not empty, try parsing
+            # like the commandline
+            md = {}
+            serial = util.read_dmi_data('system-serial-number')
+            if serial and load_cmdline_data(md, serial):
+                found.append("dmi")
+                mydata = _merge_new_seed(mydata, {'meta-data': md})
+        except Exception:
+            util.logexc(LOG, "Unable to parse dmi data")
+            return False
 
         try:
             # Parse the kernel command line, getting data passed in
             md = {}
-            if parse_cmdline_data(self.cmdline_id, md):
+            if load_cmdline_data(md):
                 found.append("cmdline")
                 mydata = _merge_new_seed(mydata, {'meta-data': md})
-        except:
+        except Exception:
             util.logexc(LOG, "Unable to parse command line data")
             return False
 
@@ -76,7 +78,7 @@ class DataSourceNoCloud(sources.DataSource):
                 LOG.debug("Using seeded data from %s", path)
                 mydata = _merge_new_seed(mydata, seeded)
                 break
-            except ValueError as e:
+            except ValueError:
                 pass
 
         # If the datasource config had a 'seedfrom' entry, then that takes
@@ -115,19 +117,13 @@ class DataSourceNoCloud(sources.DataSource):
                     try:
                         seeded = util.mount_cb(dev, _pp2d_callback,
                                                pp2d_kwargs)
-                    except ValueError as e:
+                    except ValueError:
                         if dev in label_list:
-                            LOG.warn("device %s with label=%s not a"
-                                     "valid seed.", dev, label)
+                            LOG.warning("device %s with label=%s not a"
+                                        "valid seed.", dev, label)
                         continue
 
                     mydata = _merge_new_seed(mydata, seeded)
-
-                    # For seed from a device, the default mode is 'net'.
-                    # that is more likely to be what is desired.  If they want
-                    # dsmode of local, then they must specify that.
-                    if 'dsmode' not in mydata['meta-data']:
-                        mydata['meta-data']['dsmode'] = "net"
 
                     LOG.debug("Using data from %s", dev)
                     found.append(dev)
@@ -144,7 +140,6 @@ class DataSourceNoCloud(sources.DataSource):
         if len(found) == 0:
             return False
 
-        seeded_network = None
         # The special argument "seedfrom" indicates we should
         # attempt to seed the userdata / metadata from its value
         # its primarily value is in allowing the user to type less
@@ -159,10 +154,6 @@ class DataSourceNoCloud(sources.DataSource):
             if not seedfound:
                 LOG.debug("Seed from %s not supported by %s", seedfrom, self)
                 return False
-
-            if (mydata['meta-data'].get('network-interfaces') or
-                    mydata.get('network-config')):
-                seeded_network = self.dsmode
 
             # This could throw errors, but the user told us to do it
             # so if errors are raised, let them raise
@@ -179,35 +170,21 @@ class DataSourceNoCloud(sources.DataSource):
         mydata['meta-data'] = util.mergemanydict([mydata['meta-data'],
                                                   defaults])
 
-        netdata = {'format': None, 'data': None}
-        if mydata['meta-data'].get('network-interfaces'):
-            netdata['format'] = 'interfaces'
-            netdata['data'] = mydata['meta-data']['network-interfaces']
-        elif mydata.get('network-config'):
-            netdata['format'] = 'network-config'
-            netdata['data'] = mydata['network-config']
+        self.dsmode = self._determine_dsmode(
+            [mydata['meta-data'].get('dsmode')])
 
-        # if this is the local datasource or 'seedfrom' was used
-        # and the source of the seed was self.dsmode.
-        # Then see if there is network config to apply.
-        # note this is obsolete network-interfaces style seeding.
-        if self.dsmode in ("local", seeded_network):
-            if mydata['meta-data'].get('network-interfaces'):
-                LOG.debug("Updating network interfaces from %s", self)
-                self.distro.apply_network(
-                    mydata['meta-data']['network-interfaces'])
+        if self.dsmode == sources.DSMODE_DISABLED:
+            LOG.debug("%s: not claiming datasource, dsmode=%s", self,
+                      self.dsmode)
+            return False
 
-        if mydata['meta-data']['dsmode'] == self.dsmode:
-            self.seed = ",".join(found)
-            self.metadata = mydata['meta-data']
-            self.userdata_raw = mydata['user-data']
-            self.vendordata_raw = mydata['vendor-data']
-            self._network_config = mydata['network-config']
-            return True
-
-        LOG.debug("%s: not claiming datasource, dsmode=%s", self,
-                  mydata['meta-data']['dsmode'])
-        return False
+        self.seed = ",".join(found)
+        self.metadata = mydata['meta-data']
+        self.userdata_raw = mydata['user-data']
+        self.vendordata_raw = mydata['vendor-data']
+        self._network_config = mydata['network-config']
+        self._network_eni = mydata['meta-data'].get('network-interfaces')
+        return True
 
     def check_instance_id(self, sys_cfg):
         # quickly (local check only) if self.instance_id is still valid
@@ -219,26 +196,27 @@ class DataSourceNoCloud(sources.DataSource):
         # LP: #1568150 need getattr in the case that an old class object
         # has been loaded from a pickled file and now executing new source.
         dirs = getattr(self, 'seed_dirs', [self.seed_dir])
-        quick_id = _quick_read_instance_id(cmdline_id=self.cmdline_id,
-                                           dirs=dirs)
+        quick_id = _quick_read_instance_id(dirs=dirs)
         if not quick_id:
             return None
         return quick_id == current
 
     @property
     def network_config(self):
+        if self._network_config is None:
+            if self._network_eni is not None:
+                self._network_config = eni.convert_eni_data(self._network_eni)
         return self._network_config
 
 
-def _quick_read_instance_id(cmdline_id, dirs=None):
+def _quick_read_instance_id(dirs=None):
     if dirs is None:
         dirs = []
 
     iid_key = 'instance-id'
-    if cmdline_id is None:
-        fill = {}
-        if parse_cmdline_data(cmdline_id, fill) and iid_key in fill:
-            return fill[iid_key]
+    fill = {}
+    if load_cmdline_data(fill) and iid_key in fill:
+        return fill[iid_key]
 
     for d in dirs:
         if d is None:
@@ -254,8 +232,22 @@ def _quick_read_instance_id(cmdline_id, dirs=None):
     return None
 
 
+def load_cmdline_data(fill, cmdline=None):
+    pairs = [("ds=nocloud", sources.DSMODE_LOCAL),
+             ("ds=nocloud-net", sources.DSMODE_NETWORK)]
+    for idstr, dsmode in pairs:
+        if parse_cmdline_data(idstr, fill, cmdline):
+            # if dsmode was explicitly in the commanad line, then
+            # prefer it to the dsmode based on the command line id
+            if 'dsmode' not in fill:
+                fill['dsmode'] = dsmode
+            return True
+    return False
+
+
 # Returns true or false indicating if cmdline indicated
-# that this module should be used
+# that this module should be used.  Updates dictionary 'fill'
+# with data that was found.
 # Example cmdline:
 #  root=LABEL=uec-rootfs ro ds=nocloud
 def parse_cmdline_data(ds_id, fill, cmdline=None):
@@ -288,7 +280,7 @@ def parse_cmdline_data(ds_id, fill, cmdline=None):
             continue
         try:
             (k, v) = item.split("=", 1)
-        except:
+        except Exception:
             k = item
             v = None
         if k in s2l:
@@ -319,9 +311,7 @@ def _merge_new_seed(cur, seeded):
 class DataSourceNoCloudNet(DataSourceNoCloud):
     def __init__(self, sys_cfg, distro, paths):
         DataSourceNoCloud.__init__(self, sys_cfg, distro, paths)
-        self.cmdline_id = "ds=nocloud-net"
         self.supported_seed_starts = ("http://", "https://", "ftp://")
-        self.dsmode = "net"
 
 
 # Used to match classes to dependencies
@@ -334,3 +324,5 @@ datasources = [
 # Return a list of data sources that match this set of dependencies
 def get_datasource_list(depends):
     return sources.list_from_depends(depends, datasources)
+
+# vi: ts=4 expandtab

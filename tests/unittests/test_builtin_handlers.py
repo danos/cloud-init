@@ -1,3 +1,5 @@
+# This file is part of cloud-init. See LICENSE file for license information.
+
 """Tests of the built-in user data handlers."""
 
 import os
@@ -9,7 +11,7 @@ try:
 except ImportError:
     import mock
 
-from . import helpers as test_helpers
+from cloudinit.tests import helpers as test_helpers
 
 from cloudinit import handlers
 from cloudinit import helpers
@@ -40,7 +42,7 @@ class TestBuiltins(test_helpers.FilesystemMockingTestCase):
                       'test.conf', 'blah', freq)
         h.handle_part('', handlers.CONTENT_END,
                       None, None, None)
-        self.assertEquals(0, len(os.listdir(up_root)))
+        self.assertEqual(0, len(os.listdir(up_root)))
 
     def test_upstart_frequency_single(self):
         # files should be written out when frequency is ! per-instance
@@ -67,7 +69,9 @@ class TestBuiltins(test_helpers.FilesystemMockingTestCase):
             h.handle_part('', handlers.CONTENT_END,
                           None, None, None)
 
-            self.assertEquals(len(os.listdir('/etc/upstart')), 1)
+            self.assertEqual(len(os.listdir('/etc/upstart')), 1)
 
         mockobj.assert_called_once_with(
             ['initctl', 'reload-configuration'], capture=False)
+
+# vi: ts=4 expandtab

@@ -1,20 +1,10 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2012 Yahoo! Inc.
+# Copyright (C) 2014 Amazon.com, Inc. or its affiliates.
 #
-#    Copyright (C) 2012 Yahoo! Inc.
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
+# Author: Andrew Jorgensen <ajorgens@amazon.com>
 #
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 import functools
 import json
@@ -40,7 +30,7 @@ class MetadataLeafDecoder(object):
 
     def __call__(self, field, blob):
         if not blob:
-            return blob
+            return ''
         try:
             blob = util.decode_binary(blob)
         except UnicodeDecodeError:
@@ -50,15 +40,15 @@ class MetadataLeafDecoder(object):
                 # Assume it's json, unless it fails parsing...
                 return json.loads(blob)
             except (ValueError, TypeError) as e:
-                LOG.warn("Field %s looked like a json object, but it was"
-                         " not: %s", field, e)
+                LOG.warning("Field %s looked like a json object, but it"
+                            " was not: %s", field, e)
         if blob.find("\n") != -1:
             return blob.splitlines()
         return blob
 
 
-# See: http://bit.ly/TyoUQs
-#
+# See: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/
+#         ec2-instance-metadata.html
 class MetadataMaterializer(object):
     def __init__(self, blob, base_url, caller, leaf_decoder=None):
         self._blob = blob
@@ -93,6 +83,9 @@ class MetadataMaterializer(object):
             field = field.strip()
             field_name = get_name(field)
             if not field or not field_name:
+                continue
+            # Don't materialize credentials
+            if field_name == 'security-credentials':
                 continue
             if has_children(field):
                 if field_name not in children:
@@ -134,19 +127,16 @@ class MetadataMaterializer(object):
         joined.update(child_contents)
         for field in leaf_contents.keys():
             if field in joined:
-                LOG.warn("Duplicate key found in results from %s", base_url)
+                LOG.warning("Duplicate key found in results from %s",
+                            base_url)
             else:
                 joined[field] = leaf_contents[field]
         return joined
 
 
 def _skip_retry_on_codes(status_codes, _request_args, cause):
-    """Returns if a request should retry based on a given set of codes that
-    case retrying to be stopped/skipped.
-    """
-    if cause.code in status_codes:
-        return False
-    return True
+    """Returns False if cause.code is in status_codes."""
+    return cause.code not in status_codes
 
 
 def get_instance_userdata(api_version='latest',
@@ -160,11 +150,9 @@ def get_instance_userdata(api_version='latest',
         # NOT_FOUND occurs) and just in that case returning an empty string.
         exception_cb = functools.partial(_skip_retry_on_codes,
                                          SKIP_USERDATA_CODES)
-        response = util.read_file_or_url(ud_url,
-                                         ssl_details=ssl_details,
-                                         timeout=timeout,
-                                         retries=retries,
-                                         exception_cb=exception_cb)
+        response = url_helper.read_file_or_url(
+            ud_url, ssl_details=ssl_details, timeout=timeout,
+            retries=retries, exception_cb=exception_cb)
         user_data = response.contents
     except url_helper.UrlError as e:
         if e.code not in SKIP_USERDATA_CODES:
@@ -174,17 +162,14 @@ def get_instance_userdata(api_version='latest',
     return user_data
 
 
-def get_instance_metadata(api_version='latest',
-                          metadata_address='http://169.254.169.254',
-                          ssl_details=None, timeout=5, retries=5,
-                          leaf_decoder=None):
-    md_url = url_helper.combine_url(metadata_address, api_version)
-    # Note, 'meta-data' explicitly has trailing /.
-    # this is required for CloudStack (LP: #1356855)
-    md_url = url_helper.combine_url(md_url, 'meta-data/')
-    caller = functools.partial(util.read_file_or_url,
-                               ssl_details=ssl_details, timeout=timeout,
-                               retries=retries)
+def _get_instance_metadata(tree, api_version='latest',
+                           metadata_address='http://169.254.169.254',
+                           ssl_details=None, timeout=5, retries=5,
+                           leaf_decoder=None):
+    md_url = url_helper.combine_url(metadata_address, api_version, tree)
+    caller = functools.partial(
+        url_helper.read_file_or_url, ssl_details=ssl_details,
+        timeout=timeout, retries=retries)
 
     def mcaller(url):
         return caller(url).contents
@@ -199,5 +184,29 @@ def get_instance_metadata(api_version='latest',
             md = {}
         return md
     except Exception:
-        util.logexc(LOG, "Failed fetching metadata from url %s", md_url)
+        util.logexc(LOG, "Failed fetching %s from url %s", tree, md_url)
         return {}
+
+
+def get_instance_metadata(api_version='latest',
+                          metadata_address='http://169.254.169.254',
+                          ssl_details=None, timeout=5, retries=5,
+                          leaf_decoder=None):
+    # Note, 'meta-data' explicitly has trailing /.
+    # this is required for CloudStack (LP: #1356855)
+    return _get_instance_metadata(tree='meta-data/', api_version=api_version,
+                                  metadata_address=metadata_address,
+                                  ssl_details=ssl_details, timeout=timeout,
+                                  retries=retries, leaf_decoder=leaf_decoder)
+
+
+def get_instance_identity(api_version='latest',
+                          metadata_address='http://169.254.169.254',
+                          ssl_details=None, timeout=5, retries=5,
+                          leaf_decoder=None):
+    return _get_instance_metadata(tree='dynamic/instance-identity',
+                                  api_version=api_version,
+                                  metadata_address=metadata_address,
+                                  ssl_details=ssl_details, timeout=timeout,
+                                  retries=retries, leaf_decoder=leaf_decoder)
+# vi: ts=4 expandtab

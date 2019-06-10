@@ -1,27 +1,46 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2012 Yahoo! Inc.
 #
-#    Copyright (C) 2012 Yahoo! Inc.
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
 #
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
+
+"""
+Yum Add Repo
+------------
+**Summary:** add yum repository configuration to the system
+
+Add yum repository configuration to ``/etc/yum.repos.d``. Configuration files
+are named based on the dictionary key under the ``yum_repos`` they are
+specified with. If a config file already exists with the same name as a config
+entry, the config entry will be skipped.
+
+**Internal name:** ``cc_yum_add_repo``
+
+**Module frequency:** per always
+
+**Supported distros:** fedora, rhel
+
+**Config keys**::
+
+    yum_repos:
+        <repo-name>:
+            baseurl: <repo url>
+            name: <repo name>
+            enabled: <true/false>
+            # any repository configuration options (see man yum.conf)
+"""
 
 import os
 
-import configobj
+try:
+    from configparser import ConfigParser
+except ImportError:
+    from ConfigParser import ConfigParser
 import six
 
 from cloudinit import util
+
+distros = ['fedora', 'rhel']
 
 
 def _canonicalize_id(repo_id):
@@ -36,8 +55,8 @@ def _format_repo_value(val):
         return str(int(val))
     if isinstance(val, (list, tuple)):
         # Can handle 'lists' in certain cases
-        # See: http://bit.ly/Qqrf1t
-        return "\n    ".join([_format_repo_value(v) for v in val])
+        # See: https://linux.die.net/man/5/yum.conf
+        return "\n".join([_format_repo_value(v) for v in val])
     if not isinstance(val, six.string_types):
         return str(val)
     return val
@@ -46,16 +65,19 @@ def _format_repo_value(val):
 # TODO(harlowja): move to distro?
 # See man yum.conf
 def _format_repository_config(repo_id, repo_config):
-    to_be = configobj.ConfigObj()
-    to_be[repo_id] = {}
+    to_be = ConfigParser()
+    to_be.add_section(repo_id)
     # Do basic translation of the items -> values
     for (k, v) in repo_config.items():
         # For now assume that people using this know
         # the format of yum and don't verify keys/values further
-        to_be[repo_id][k] = _format_repo_value(v)
-    lines = to_be.write()
-    lines.insert(0, "# Created by cloud-init on %s" % (util.time_rfc2822()))
-    return "\n".join(lines)
+        to_be.set(repo_id, k, _format_repo_value(v))
+    to_be_stream = six.StringIO()
+    to_be.write(to_be_stream)
+    to_be_stream.seek(0)
+    lines = to_be_stream.readlines()
+    lines.insert(0, "# Created by cloud-init on %s\n" % (util.time_rfc2822()))
+    return "".join(lines)
 
 
 def handle(name, cfg, _cloud, log, _args):
@@ -105,3 +127,5 @@ def handle(name, cfg, _cloud, log, _args):
         repo_blob = _format_repository_config(c_repo_id,
                                               repo_configs.get(c_repo_id))
         util.write_file(path, repo_blob)
+
+# vi: ts=4 expandtab

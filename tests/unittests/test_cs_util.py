@@ -1,20 +1,10 @@
+# This file is part of cloud-init. See LICENSE file for license information.
+
 from __future__ import print_function
 
-import sys
-import unittest
+from cloudinit.tests import helpers as test_helpers
 
 from cloudinit.cs_utils import Cepko
-
-try:
-    skip = unittest.skip
-except AttributeError:
-    # Python 2.6.  Doesn't have to be high fidelity.
-    def skip(reason):
-        def decorator(func):
-            def wrapper(*args, **kws):
-                print(reason, file=sys.stderr)
-            return wrapper
-        return decorator
 
 
 SERVER_CONTEXT = {
@@ -43,18 +33,10 @@ class CepkoMock(Cepko):
 # 2015-01-22 BAW: This test is completely useless because it only ever tests
 # the CepkoMock object.  Even in its original form, I don't think it ever
 # touched the underlying Cepko class methods.
-@skip('This test is completely useless')
-class CepkoResultTests(unittest.TestCase):
+class CepkoResultTests(test_helpers.TestCase):
     def setUp(self):
-        pass
-        # self.mocked = self.mocker.replace("cloudinit.cs_utils.Cepko",
-        #                     spec=CepkoMock,
-        #                     count=False,
-        #                     passthrough=False)
-        # self.mocked()
-        # self.mocker.result(CepkoMock())
-        # self.mocker.replay()
-        # self.c = Cepko()
+        self.c = Cepko()
+        raise test_helpers.SkipTest('This test is completely useless')
 
     def test_getitem(self):
         result = self.c.all()
@@ -82,3 +64,5 @@ class CepkoResultTests(unittest.TestCase):
         self.assertEqual('much server', result[0])
         self.assertTrue('very performance' in result)
         self.assertEqual(2, len(result))
+
+# vi: ts=4 expandtab

@@ -1,23 +1,11 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2009-2010 Canonical Ltd.
+# Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
+# Copyright (C) 2012 Yahoo! Inc.
 #
-#    Copyright (C) 2009-2010 Canonical Ltd.
-#    Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
-#    Copyright (C) 2012 Yahoo! Inc.
+# Author: Joe VLcek <JVLcek@RedHat.com>
+# Author: Juerg Haefliger <juerg.haefliger@hp.com>
 #
-#    Author: Joe VLcek <JVLcek@RedHat.com>
-#    Author: Juerg Haefliger <juerg.haefliger@hp.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 '''
 This file contains code used to gather the user data passed to an
@@ -40,8 +28,7 @@ LOG = logging.getLogger(__name__)
 CLOUD_INFO_FILE = '/etc/sysconfig/cloud-info'
 
 # Shell command lists
-CMD_PROBE_FLOPPY = ['/sbin/modprobe', 'floppy']
-CMD_UDEVADM_SETTLE = ['/sbin/udevadm', 'settle', '--timeout=5']
+CMD_PROBE_FLOPPY = ['modprobe', 'floppy']
 
 META_DATA_NOT_SUPPORTED = {
     'block-device-mapping': {},
@@ -86,6 +73,9 @@ def read_user_data_callback(mount_dir):
 
 
 class DataSourceAltCloud(sources.DataSource):
+
+    dsname = 'AltCloud'
+
     def __init__(self, sys_cfg, distro, paths):
         sources.DataSource.__init__(self, sys_cfg, distro, paths)
         self.seed = None
@@ -110,12 +100,6 @@ class DataSourceAltCloud(sources.DataSource):
 
         '''
 
-        uname_arch = os.uname()[4]
-        if uname_arch.startswith("arm") or uname_arch == "aarch64":
-            # Disabling because dmi data is not available on ARM processors
-            LOG.debug("Disabling AltCloud datasource on arm (LP: #1243287)")
-            return 'UNKNOWN'
-
         system_name = util.read_dmi_data("system-product-name")
         if not system_name:
             return 'UNKNOWN'
@@ -130,7 +114,7 @@ class DataSourceAltCloud(sources.DataSource):
 
         return 'UNKNOWN'
 
-    def get_data(self):
+    def _get_data(self):
         '''
         Description:
             User Data is passed to the launching instance which
@@ -160,7 +144,7 @@ class DataSourceAltCloud(sources.DataSource):
         else:
             cloud_type = self.get_cloud_type()
 
-        LOG.debug('cloud_type: ' + str(cloud_type))
+        LOG.debug('cloud_type: %s', str(cloud_type))
 
         if 'RHEV' in cloud_type:
             if self.user_data_rhevm():
@@ -199,31 +183,25 @@ class DataSourceAltCloud(sources.DataSource):
         try:
             cmd = CMD_PROBE_FLOPPY
             (cmd_out, _err) = util.subp(cmd)
-            LOG.debug(('Command: %s\nOutput%s') % (' '.join(cmd), cmd_out))
-        except ProcessExecutionError as _err:
-            util.logexc(LOG, 'Failed command: %s\n%s', ' '.join(cmd),
-                        _err.message)
+            LOG.debug('Command: %s\nOutput%s', ' '.join(cmd), cmd_out)
+        except ProcessExecutionError as e:
+            util.logexc(LOG, 'Failed command: %s\n%s', ' '.join(cmd), e)
             return False
-        except OSError as _err:
-            util.logexc(LOG, 'Failed command: %s\n%s', ' '.join(cmd),
-                        _err.message)
+        except OSError as e:
+            util.logexc(LOG, 'Failed command: %s\n%s', ' '.join(cmd), e)
             return False
 
         floppy_dev = '/dev/fd0'
 
         # udevadm settle for floppy device
         try:
-            cmd = CMD_UDEVADM_SETTLE
-            cmd.append('--exit-if-exists=' + floppy_dev)
-            (cmd_out, _err) = util.subp(cmd)
-            LOG.debug(('Command: %s\nOutput%s') % (' '.join(cmd), cmd_out))
-        except ProcessExecutionError as _err:
-            util.logexc(LOG, 'Failed command: %s\n%s', ' '.join(cmd),
-                        _err.message)
+            (cmd_out, _err) = util.udevadm_settle(exists=floppy_dev, timeout=5)
+            LOG.debug('Command: %s\nOutput%s', ' '.join(cmd), cmd_out)
+        except ProcessExecutionError as e:
+            util.logexc(LOG, 'Failed command: %s\n%s', ' '.join(cmd), e)
             return False
-        except OSError as _err:
-            util.logexc(LOG, 'Failed command: %s\n%s', ' '.join(cmd),
-                        _err.message)
+        except OSError as e:
+            util.logexc(LOG, 'Failed command: %s\n%s', ' '.join(cmd), e)
             return False
 
         try:
@@ -279,6 +257,7 @@ class DataSourceAltCloud(sources.DataSource):
         else:
             return False
 
+
 # Used to match classes to dependencies
 # Source DataSourceAltCloud does not really depend on networking.
 # In the future 'dsmode' like behavior can be added to offer user
@@ -291,3 +270,5 @@ datasources = [
 # Return a list of data sources that match this set of dependencies
 def get_datasource_list(depends):
     return sources.list_from_depends(depends, datasources)
+
+# vi: ts=4 expandtab

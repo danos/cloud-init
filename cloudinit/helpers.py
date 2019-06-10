@@ -1,31 +1,19 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2012 Canonical Ltd.
+# Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
+# Copyright (C) 2012 Yahoo! Inc.
 #
-#    Copyright (C) 2012 Canonical Ltd.
-#    Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
-#    Copyright (C) 2012 Yahoo! Inc.
+# Author: Scott Moser <scott.moser@canonical.com>
+# Author: Juerg Haefliger <juerg.haefliger@hp.com>
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
 #
-#    Author: Scott Moser <scott.moser@canonical.com>
-#    Author: Juerg Haefliger <juerg.haefliger@hp.com>
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 from time import time
 
 import contextlib
 import os
 
-import six
+from six import StringIO
 from six.moves.configparser import (
     NoSectionError, NoOptionError, RawConfigParser)
 
@@ -86,7 +74,7 @@ class FileSemaphores(object):
         name = canon_sem_name(name)
         try:
             yield self._acquire(name, freq)
-        except:
+        except Exception:
             if clear_on_fail:
                 self.clear(name, freq)
             raise
@@ -138,11 +126,11 @@ class FileSemaphores(object):
         # this case could happen if the migrator module hadn't run yet
         # but the item had run before we did canon_sem_name.
         if cname != name and os.path.exists(self._get_path(name, freq)):
-            LOG.warn("%s has run without canonicalized name [%s].\n"
-                     "likely the migrator has not yet run. "
-                     "It will run next boot.\n"
-                     "run manually with: cloud-init single --name=migrator"
-                     % (name, cname))
+            LOG.warning("%s has run without canonicalized name [%s].\n"
+                        "likely the migrator has not yet run. "
+                        "It will run next boot.\n"
+                        "run manually with: cloud-init single --name=migrator",
+                        name, cname)
             return True
 
         return False
@@ -219,7 +207,7 @@ class ConfigMerger(object):
                 ds_cfg = self._ds.get_config_obj()
                 if ds_cfg and isinstance(ds_cfg, (dict)):
                     d_cfgs.append(ds_cfg)
-            except:
+            except Exception:
                 util.logexc(LOG, "Failed loading of datasource config object "
                             "from %s", self._ds)
         return d_cfgs
@@ -230,7 +218,7 @@ class ConfigMerger(object):
             e_fn = os.environ[CFG_ENV_NAME]
             try:
                 e_cfgs.append(util.read_conf(e_fn))
-            except:
+            except Exception:
                 util.logexc(LOG, 'Failed loading of env. config from %s',
                             e_fn)
         return e_cfgs
@@ -251,7 +239,7 @@ class ConfigMerger(object):
             if cc_fn and os.path.isfile(cc_fn):
                 try:
                     i_cfgs.append(util.read_conf(cc_fn))
-                except:
+                except Exception:
                     util.logexc(LOG, 'Failed loading of cloud-config from %s',
                                 cc_fn)
         return i_cfgs
@@ -268,7 +256,7 @@ class ConfigMerger(object):
             for c_fn in self._fns:
                 try:
                     cfgs.append(util.read_conf(c_fn))
-                except:
+                except Exception:
                     util.logexc(LOG, "Failed loading of configuration from %s",
                                 c_fn)
 
@@ -328,6 +316,7 @@ class Paths(object):
         self.cfgs = path_cfgs
         # Populate all the initial paths
         self.cloud_dir = path_cfgs.get('cloud_dir', '/var/lib/cloud')
+        self.run_dir = path_cfgs.get('run_dir', '/run/cloud-init')
         self.instance_link = os.path.join(self.cloud_dir, 'instance')
         self.boot_finished = os.path.join(self.instance_link, "boot-finished")
         self.upstart_conf_d = path_cfgs.get('upstart_dir')
@@ -349,26 +338,21 @@ class Paths(object):
             "data": "data",
             "vendordata_raw": "vendor-data.txt",
             "vendordata": "vendor-data.txt.i",
+            "instance_id": ".instance-id",
+            "manual_clean_marker": "manual-clean",
+            "warnings": "warnings",
         }
         # Set when a datasource becomes active
         self.datasource = ds
 
     # get_ipath_cur: get the current instance path for an item
     def get_ipath_cur(self, name=None):
-        ipath = self.instance_link
-        add_on = self.lookups.get(name)
-        if add_on:
-            ipath = os.path.join(ipath, add_on)
-        return ipath
+        return self._get_path(self.instance_link, name)
 
     # get_cpath : get the "clouddir" (/var/lib/cloud/<name>)
     # for a name in dirmap
     def get_cpath(self, name=None):
-        cpath = self.cloud_dir
-        add_on = self.lookups.get(name)
-        if add_on:
-            cpath = os.path.join(cpath, add_on)
-        return cpath
+        return self._get_path(self.cloud_dir, name)
 
     # _get_ipath : get the instance path for a name in pathmap
     # (/var/lib/cloud/instances/<instance>/<name>)
@@ -391,11 +375,19 @@ class Paths(object):
     def get_ipath(self, name=None):
         ipath = self._get_ipath(name)
         if not ipath:
-            LOG.warn(("No per instance data available, "
-                      "is there an datasource/iid set?"))
+            LOG.warning(("No per instance data available, "
+                         "is there an datasource/iid set?"))
             return None
         else:
             return ipath
+
+    def _get_path(self, base, name=None):
+        if name is None:
+            return base
+        return os.path.join(base, self.lookups[name])
+
+    def get_runpath(self, name=None):
+        return self._get_path(self.run_dir, name)
 
 
 # This config parser will not throw when sections don't exist
@@ -449,10 +441,12 @@ class DefaultingConfigParser(RawConfigParser):
 
     def stringify(self, header=None):
         contents = ''
-        with six.StringIO() as outputstream:
-            self.write(outputstream)
-            outputstream.flush()
-            contents = outputstream.getvalue()
-            if header:
-                contents = "\n".join([header, contents])
+        outputstream = StringIO()
+        self.write(outputstream)
+        outputstream.flush()
+        contents = outputstream.getvalue()
+        if header:
+            contents = '\n'.join([header, contents, ''])
         return contents
+
+# vi: ts=4 expandtab

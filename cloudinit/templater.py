@@ -1,24 +1,14 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2012 Canonical Ltd.
+# Copyright (C) 2012 Hewlett-Packard Development Company, L.P.
+# Copyright (C) 2012 Yahoo! Inc.
+# Copyright (C) 2016 Amazon.com, Inc. or its affiliates.
 #
-#    Copyright (C) 2012 Canonical Ltd.
-#    Copyright (C) 2012 Hewlett-Packard Development Company, L.P.
-#    Copyright (C) 2012 Yahoo! Inc.
+# Author: Scott Moser <scott.moser@canonical.com>
+# Author: Juerg Haefliger <juerg.haefliger@hp.com>
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
+# Author: Andrew Jorgensen <ajorgens@amazon.com>
 #
-#    Author: Scott Moser <scott.moser@canonical.com>
-#    Author: Juerg Haefliger <juerg.haefliger@hp.com>
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 import collections
 import re
@@ -102,26 +92,25 @@ def detect_template(text):
         rest = ''
     type_match = TYPE_MATCHER.match(ident)
     if not type_match:
-        if not CHEETAH_AVAILABLE:
-            LOG.warn("Cheetah not available as the default renderer for"
-                     " unknown template, reverting to the basic renderer.")
-            return ('basic', basic_render, text)
-        else:
+        if CHEETAH_AVAILABLE:
+            LOG.debug("Using Cheetah as the renderer for unknown template.")
             return ('cheetah', cheetah_render, text)
+        else:
+            return ('basic', basic_render, text)
     else:
         template_type = type_match.group(1).lower().strip()
         if template_type not in ('jinja', 'cheetah', 'basic'):
             raise ValueError("Unknown template rendering type '%s' requested"
                              % template_type)
         if template_type == 'jinja' and not JINJA_AVAILABLE:
-            LOG.warn("Jinja not available as the selected renderer for"
-                     " desired template, reverting to the basic renderer.")
+            LOG.warning("Jinja not available as the selected renderer for"
+                        " desired template, reverting to the basic renderer.")
             return ('basic', basic_render, rest)
         elif template_type == 'jinja' and JINJA_AVAILABLE:
             return ('jinja', jinja_render, rest)
         if template_type == 'cheetah' and not CHEETAH_AVAILABLE:
-            LOG.warn("Cheetah not available as the selected renderer for"
-                     " desired template, reverting to the basic renderer.")
+            LOG.warning("Cheetah not available as the selected renderer for"
+                        " desired template, reverting to the basic renderer.")
             return ('basic', basic_render, rest)
         elif template_type == 'cheetah' and CHEETAH_AVAILABLE:
             return ('cheetah', cheetah_render, rest)
@@ -132,7 +121,11 @@ def detect_template(text):
 def render_from_file(fn, params):
     if not params:
         params = {}
-    template_type, renderer, content = detect_template(util.load_file(fn))
+    # jinja in python2 uses unicode internally.  All py2 str will be decoded.
+    # If it is given a str that has non-ascii then it will raise a
+    # UnicodeDecodeError.  So we explicitly convert to unicode type here.
+    template_type, renderer, content = detect_template(
+        util.load_file(fn, decode=False).decode('utf-8'))
     LOG.debug("Rendering content of '%s' using renderer %s", fn, template_type)
     return renderer(content, params)
 
@@ -142,8 +135,19 @@ def render_to_file(fn, outfn, params, mode=0o644):
     util.write_file(outfn, contents, mode=mode)
 
 
+def render_string_to_file(content, outfn, params, mode=0o644):
+    """Render string (or py2 unicode) to file.
+    Warning: py2 str with non-ascii chars will cause UnicodeDecodeError."""
+    contents = render_string(content, params)
+    util.write_file(outfn, contents, mode=mode)
+
+
 def render_string(content, params):
+    """Render string (or py2 unicode).
+    Warning: py2 str with non-ascii chars will cause UnicodeDecodeError."""
     if not params:
         params = {}
-    template_type, renderer, content = detect_template(content)
+    _template_type, renderer, content = detect_template(content)
     return renderer(content, params)
+
+# vi: ts=4 expandtab

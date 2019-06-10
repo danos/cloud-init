@@ -1,24 +1,12 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2012 Canonical Ltd.
+# Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
+# Copyright (C) 2012 Yahoo! Inc.
 #
-#    Copyright (C) 2012 Canonical Ltd.
-#    Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
-#    Copyright (C) 2012 Yahoo! Inc.
+# Author: Scott Moser <scott.moser@canonical.com>
+# Author: Juerg Haefliger <juerg.haefliger@hp.com>
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
 #
-#    Author: Scott Moser <scott.moser@canonical.com>
-#    Author: Juerg Haefliger <juerg.haefliger@hp.com>
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 from cloudinit import distros
 from cloudinit import helpers
@@ -40,7 +28,7 @@ def _make_sysconfig_bool(val):
 
 
 class Distro(distros.Distro):
-    # See: http://tiny.cc/6r99fw
+    # See: https://access.redhat.com/documentation/en-US/Red_Hat_Enterprise_Linux/7/html/Networking_Guide/sec-Network_Configuration_Using_sysconfig_Files.html # noqa
     clock_conf_fn = "/etc/sysconfig/clock"
     locale_conf_fn = '/etc/sysconfig/i18n'
     systemd_locale_conf_fn = '/etc/locale.conf'
@@ -59,9 +47,13 @@ class Distro(distros.Distro):
         # should only happen say once per instance...)
         self._runner = helpers.Runners(paths)
         self.osfamily = 'redhat'
+        cfg['ssh_svcname'] = 'sshd'
 
     def install_packages(self, pkglist):
         self.package_command('install', pkgs=pkglist)
+
+    def _write_network_config(self, netconfig):
+        return self._supported_write_network_config(netconfig)
 
     def _write_network(self, settings):
         # TODO(harlowja) fix this... since this is the ubuntu format
@@ -138,8 +130,8 @@ class Distro(distros.Distro):
             rhel_util.update_sysconfig_file(out_fn, host_cfg)
 
     def _select_hostname(self, hostname, fqdn):
-        # See: http://bit.ly/TwitgL
         # Should be fqdn if we can use it
+        # See: https://www.centos.org/docs/5/html/Deployment_Guide-en-US/ch-sysconfig.html#s2-sysconfig-network # noqa
         if fqdn:
             return fqdn
         return hostname
@@ -193,13 +185,18 @@ class Distro(distros.Distro):
         if pkgs is None:
             pkgs = []
 
-        cmd = ['yum']
-        # If enabled, then yum will be tolerant of errors on the command line
-        # with regard to packages.
-        # For example: if you request to install foo, bar and baz and baz is
-        # installed; yum won't error out complaining that baz is already
-        # installed.
-        cmd.append("-t")
+        if util.which('dnf'):
+            LOG.debug('Using DNF for package management')
+            cmd = ['dnf']
+        else:
+            LOG.debug('Using YUM for package management')
+            # the '-t' argument makes yum tolerant of errors on the command
+            # line with regard to packages.
+            #
+            # For example: if you request to install foo, bar and baz and baz
+            # is installed; yum won't error out complaining that baz is already
+            # installed.
+            cmd = ['yum', '-t']
         # Determines whether or not yum prompts for confirmation
         # of critical actions. We don't want to prompt...
         cmd.append("-y")
@@ -220,3 +217,5 @@ class Distro(distros.Distro):
     def update_package_sources(self):
         self._runner.run("update-sources", self.package_command,
                          ["makecache"], freq=PER_INSTANCE)
+
+# vi: ts=4 expandtab

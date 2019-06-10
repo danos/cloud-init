@@ -1,20 +1,12 @@
+# This file is part of cloud-init. See LICENSE file for license information.
+
 #    Copyright (C) 2013 Hewlett-Packard Development Company, L.P.
 #
 #    Author: Juerg Haefliger <juerg.haefliger@hp.com>
 #
 #    Based on test_handler_set_hostname.py
 #
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#    This file is part of cloud-init. See LICENSE file for license information.
 
 from cloudinit.config import cc_seed_random
 
@@ -30,7 +22,7 @@ from cloudinit import util
 
 from cloudinit.sources import DataSourceNone
 
-from .. import helpers as t_help
+from cloudinit.tests import helpers as t_help
 
 import logging
 
@@ -92,7 +84,7 @@ class TestRandomSeed(t_help.TestCase):
         }
         cc_seed_random.handle('test', cfg, self._get_cloud('ubuntu'), LOG, [])
         contents = util.load_file(self._seed_file)
-        self.assertEquals("tiny-tim-was-here", contents)
+        self.assertEqual("tiny-tim-was-here", contents)
 
     def test_append_random_unknown_encoding(self):
         data = self._compress(b"tiny-toe")
@@ -117,7 +109,7 @@ class TestRandomSeed(t_help.TestCase):
         }
         cc_seed_random.handle('test', cfg, self._get_cloud('ubuntu'), LOG, [])
         contents = util.load_file(self._seed_file)
-        self.assertEquals("tiny-toe", contents)
+        self.assertEqual("tiny-toe", contents)
 
     def test_append_random_gz(self):
         data = self._compress(b"big-toe")
@@ -130,7 +122,7 @@ class TestRandomSeed(t_help.TestCase):
         }
         cc_seed_random.handle('test', cfg, self._get_cloud('ubuntu'), LOG, [])
         contents = util.load_file(self._seed_file)
-        self.assertEquals("big-toe", contents)
+        self.assertEqual("big-toe", contents)
 
     def test_append_random_base64(self):
         data = util.b64e('bubbles')
@@ -143,7 +135,7 @@ class TestRandomSeed(t_help.TestCase):
         }
         cc_seed_random.handle('test', cfg, self._get_cloud('ubuntu'), LOG, [])
         contents = util.load_file(self._seed_file)
-        self.assertEquals("bubbles", contents)
+        self.assertEqual("bubbles", contents)
 
     def test_append_random_b64(self):
         data = util.b64e('kit-kat')
@@ -156,7 +148,7 @@ class TestRandomSeed(t_help.TestCase):
         }
         cc_seed_random.handle('test', cfg, self._get_cloud('ubuntu'), LOG, [])
         contents = util.load_file(self._seed_file)
-        self.assertEquals("kit-kat", contents)
+        self.assertEqual("kit-kat", contents)
 
     def test_append_random_metadata(self):
         cfg = {
@@ -168,7 +160,7 @@ class TestRandomSeed(t_help.TestCase):
         c = self._get_cloud('ubuntu', {'random_seed': '-so-was-josh'})
         cc_seed_random.handle('test', cfg, c, LOG, [])
         contents = util.load_file(self._seed_file)
-        self.assertEquals('tiny-tim-was-here-so-was-josh', contents)
+        self.assertEqual('tiny-tim-was-here-so-was-josh', contents)
 
     def test_seed_command_provided_and_available(self):
         c = self._get_cloud('ubuntu', {})
@@ -225,3 +217,5 @@ def apply_patches(patches):
         setattr(ref, name, replace)
         ret.append((ref, name, orig))
     return ret
+
+# vi: ts=4 expandtab

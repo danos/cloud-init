@@ -1,37 +1,36 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2014 Yahoo! Inc.
 #
-#    Copyright (C) 2014 Yahoo! Inc.
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
 #
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 from __future__ import print_function
 
-from . import helpers as test_helpers
+from cloudinit.tests import helpers as test_helpers
 import textwrap
 
 from cloudinit import templater
+from cloudinit.util import load_file, write_file
 
 try:
     import Cheetah
     HAS_CHEETAH = True
-    Cheetah  # make pyflakes happy, as Cheetah is not used here
+    c = Cheetah  # make pyflakes and pylint happy, as Cheetah is not used here
 except ImportError:
     HAS_CHEETAH = False
 
 
-class TestTemplates(test_helpers.TestCase):
+class TestTemplates(test_helpers.CiTestCase):
+    jinja_utf8 = b'It\xe2\x80\x99s not ascii, {{name}}\n'
+    jinja_utf8_rbob = b'It\xe2\x80\x99s not ascii, bob\n'.decode('utf-8')
+
+    @staticmethod
+    def add_header(renderer, data):
+        """Return text (py2 unicode/py3 str) with template header."""
+        if isinstance(data, bytes):
+            data = data.decode('utf-8')
+        return "## template: %s\n" % renderer + data
+
     def test_render_basic(self):
         in_data = textwrap.dedent("""
             ${b}
@@ -51,14 +50,14 @@ class TestTemplates(test_helpers.TestCase):
     def test_detection(self):
         blob = "## template:cheetah"
 
-        (template_type, renderer, contents) = templater.detect_template(blob)
+        (template_type, _renderer, contents) = templater.detect_template(blob)
         self.assertIn("cheetah", template_type)
         self.assertEqual("", contents.strip())
 
         blob = "blahblah $blah"
-        (template_type, renderer, contents) = templater.detect_template(blob)
+        (template_type, _renderer, _contents) = templater.detect_template(blob)
         self.assertIn("cheetah", template_type)
-        self.assertEquals(blob, contents)
+        self.assertEqual(blob, contents)
 
         blob = '##template:something-new'
         self.assertRaises(ValueError, templater.detect_template, blob)
@@ -67,18 +66,18 @@ class TestTemplates(test_helpers.TestCase):
         blob = '''## template:cheetah
 $a,$b'''
         c = templater.render_string(blob, {"a": 1, "b": 2})
-        self.assertEquals("1,2", c)
+        self.assertEqual("1,2", c)
 
     def test_render_jinja(self):
         blob = '''## template:jinja
 {{a}},{{b}}'''
         c = templater.render_string(blob, {"a": 1, "b": 2})
-        self.assertEquals("1,2", c)
+        self.assertEqual("1,2", c)
 
     def test_render_default(self):
         blob = '''$a,$b'''
         c = templater.render_string(blob, {"a": 1, "b": 2})
-        self.assertEquals("1,2", c)
+        self.assertEqual("1,2", c)
 
     def test_render_basic_deeper(self):
         hn = 'myfoohost.yahoo.com'
@@ -117,3 +116,33 @@ $a,$b'''
                                           {'mirror': mirror,
                                            'codename': codename})
         self.assertEqual(ex_data, out_data)
+
+    def test_jinja_nonascii_render_to_string(self):
+        """Test jinja render_to_string with non-ascii content."""
+        self.assertEqual(
+            templater.render_string(
+                self.add_header("jinja", self.jinja_utf8), {"name": "bob"}),
+            self.jinja_utf8_rbob)
+
+    def test_jinja_nonascii_render_to_file(self):
+        """Test jinja render_to_file of a filename with non-ascii content."""
+        tmpl_fn = self.tmp_path("j-render-to-file.template")
+        out_fn = self.tmp_path("j-render-to-file.out")
+        write_file(filename=tmpl_fn, omode="wb",
+                   content=self.add_header(
+                       "jinja", self.jinja_utf8).encode('utf-8'))
+        templater.render_to_file(tmpl_fn, out_fn, {"name": "bob"})
+        result = load_file(out_fn, decode=False).decode('utf-8')
+        self.assertEqual(result, self.jinja_utf8_rbob)
+
+    def test_jinja_nonascii_render_from_file(self):
+        """Test jinja render_from_file with non-ascii content."""
+        tmpl_fn = self.tmp_path("j-render-from-file.template")
+        write_file(tmpl_fn, omode="wb",
+                   content=self.add_header(
+                       "jinja", self.jinja_utf8).encode('utf-8'))
+        result = templater.render_from_file(tmpl_fn, {"name": "bob"})
+        self.assertEqual(result, self.jinja_utf8_rbob)
+
+
+# vi: ts=4 expandtab

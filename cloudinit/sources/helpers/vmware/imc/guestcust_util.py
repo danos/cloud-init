@@ -1,21 +1,9 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2016 Canonical Ltd.
+# Copyright (C) 2016 VMware Inc.
 #
-#    Copyright (C) 2016 Canonical Ltd.
-#    Copyright (C) 2016 VMware Inc.
+# Author: Sankar Tanguturi <stanguturi@vmware.com>
 #
-#    Author: Sankar Tanguturi <stanguturi@vmware.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 import logging
 import os
@@ -23,8 +11,8 @@ import time
 
 from cloudinit import util
 
-from .guestcust_state import GuestCustStateEnum
 from .guestcust_event import GuestCustEventEnum
+from .guestcust_state import GuestCustStateEnum
 
 logger = logging.getLogger(__name__)
 
@@ -71,14 +59,16 @@ def set_customization_status(custstate, custerror, errormessage=None):
     return (out, err)
 
 
-# This will read the file nics.txt in the specified directory
-# and return the content
-def get_nics_to_enable(dirpath):
-    if not dirpath:
+def get_nics_to_enable(nicsfilepath):
+    """Reads the NICS from the specified file path and returns the content
+
+    @param nicsfilepath: Absolute file path to the NICS.txt file.
+    """
+
+    if not nicsfilepath:
         return None
 
     NICS_SIZE = 1024
-    nicsfilepath = os.path.join(dirpath, "nics.txt")
     if not os.path.exists(nicsfilepath):
         return None
 
@@ -101,7 +91,7 @@ def enable_nics(nics):
 
     for attempt in range(0, enableNicsWaitRetries):
         logger.debug("Trying to connect interfaces, attempt %d", attempt)
-        (out, err) = set_customization_status(
+        (out, _err) = set_customization_status(
             GuestCustStateEnum.GUESTCUST_STATE_RUNNING,
             GuestCustEventEnum.GUESTCUST_EVENT_ENABLE_NICS,
             nics)
@@ -114,7 +104,7 @@ def enable_nics(nics):
             return
 
         for count in range(0, enableNicsWaitCount):
-            (out, err) = set_customization_status(
+            (out, _err) = set_customization_status(
                 GuestCustStateEnum.GUESTCUST_STATE_RUNNING,
                 GuestCustEventEnum.GUESTCUST_EVENT_QUERY_NICS,
                 nics)
@@ -126,3 +116,5 @@ def enable_nics(nics):
 
     logger.warning("Can't connect network interfaces after %d attempts",
                    enableNicsWaitRetries)
+
+# vi: ts=4 expandtab

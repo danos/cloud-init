@@ -1,8 +1,12 @@
+# This file is part of cloud-init. See LICENSE file for license information.
+
 from cloudinit import distros
+from cloudinit.distros import ug_util
 from cloudinit import helpers
 from cloudinit import settings
 
-from ..helpers import TestCase
+from cloudinit.tests.helpers import TestCase
+import mock
 
 
 bcfg = {
@@ -18,6 +22,12 @@ bcfg = {
 
 class TestUGNormalize(TestCase):
 
+    def setUp(self):
+        super(TestUGNormalize, self).setUp()
+        self.add_patch('cloudinit.util.system_is_snappy', 'm_snappy')
+        self.add_patch('cloudinit.util.system_info', 'm_sysinfo')
+        self.m_sysinfo.return_value = {'dist': ('Distro', '99.1', 'Codename')}
+
     def _make_distro(self, dtype, def_user=None):
         cfg = dict(settings.CFG_BUILTIN)
         cfg['system_info']['distro'] = dtype
@@ -29,24 +39,23 @@ class TestUGNormalize(TestCase):
         return distro
 
     def _norm(self, cfg, distro):
-        return distros.normalize_users_groups(cfg, distro)
+        return ug_util.normalize_users_groups(cfg, distro)
 
     def test_group_dict(self):
         distro = self._make_distro('ubuntu')
-        g = {'groups': [
-            {'ubuntu': ['foo', 'bar'],
-             'bob': 'users'},
-            'cloud-users',
-            {'bob': 'users2'}
-            ]}
+        g = {'groups':
+             [{'ubuntu': ['foo', 'bar'],
+               'bob': 'users'},
+              'cloud-users',
+              {'bob': 'users2'}]}
         (_users, groups) = self._norm(g, distro)
         self.assertIn('ubuntu', groups)
         ub_members = groups['ubuntu']
-        self.assertEquals(sorted(['foo', 'bar']), sorted(ub_members))
+        self.assertEqual(sorted(['foo', 'bar']), sorted(ub_members))
         self.assertIn('bob', groups)
         b_members = groups['bob']
-        self.assertEquals(sorted(['users', 'users2']),
-                          sorted(b_members))
+        self.assertEqual(sorted(['users', 'users2']),
+                         sorted(b_members))
 
     def test_basic_groups(self):
         distro = self._make_distro('ubuntu')
@@ -55,7 +64,7 @@ class TestUGNormalize(TestCase):
         }
         (users, groups) = self._norm(ug_cfg, distro)
         self.assertIn('bob', groups)
-        self.assertEquals({}, users)
+        self.assertEqual({}, users)
 
     def test_csv_groups(self):
         distro = self._make_distro('ubuntu')
@@ -66,7 +75,7 @@ class TestUGNormalize(TestCase):
         self.assertIn('bob', groups)
         self.assertIn('joe', groups)
         self.assertIn('steve', groups)
-        self.assertEquals({}, users)
+        self.assertEqual({}, users)
 
     def test_more_groups(self):
         distro = self._make_distro('ubuntu')
@@ -77,7 +86,7 @@ class TestUGNormalize(TestCase):
         self.assertIn('bob', groups)
         self.assertIn('joe', groups)
         self.assertIn('steve', groups)
-        self.assertEquals({}, users)
+        self.assertEqual({}, users)
 
     def test_member_groups(self):
         distro = self._make_distro('ubuntu')
@@ -90,11 +99,11 @@ class TestUGNormalize(TestCase):
         }
         (users, groups) = self._norm(ug_cfg, distro)
         self.assertIn('bob', groups)
-        self.assertEquals(['s'], groups['bob'])
-        self.assertEquals([], groups['joe'])
+        self.assertEqual(['s'], groups['bob'])
+        self.assertEqual([], groups['joe'])
         self.assertIn('joe', groups)
         self.assertIn('steve', groups)
-        self.assertEquals({}, users)
+        self.assertEqual({}, users)
 
     def test_users_simple_dict(self):
         distro = self._make_distro('ubuntu', bcfg)
@@ -128,14 +137,14 @@ class TestUGNormalize(TestCase):
             }
         }
         (users, _groups) = self._norm(ug_cfg, distro)
-        self.assertEquals({}, users)
+        self.assertEqual({}, users)
         ug_cfg = {
             'users': {
                 'default': 'no',
             }
         }
         (users, _groups) = self._norm(ug_cfg, distro)
-        self.assertEquals({}, users)
+        self.assertEqual({}, users)
 
     def test_users_simple_csv(self):
         distro = self._make_distro('ubuntu')
@@ -145,8 +154,8 @@ class TestUGNormalize(TestCase):
         (users, _groups) = self._norm(ug_cfg, distro)
         self.assertIn('joe', users)
         self.assertIn('bob', users)
-        self.assertEquals({'default': False}, users['joe'])
-        self.assertEquals({'default': False}, users['bob'])
+        self.assertEqual({'default': False}, users['joe'])
+        self.assertEqual({'default': False}, users['bob'])
 
     def test_users_simple(self):
         distro = self._make_distro('ubuntu')
@@ -159,8 +168,8 @@ class TestUGNormalize(TestCase):
         (users, _groups) = self._norm(ug_cfg, distro)
         self.assertIn('joe', users)
         self.assertIn('bob', users)
-        self.assertEquals({'default': False}, users['joe'])
-        self.assertEquals({'default': False}, users['bob'])
+        self.assertEqual({'default': False}, users['joe'])
+        self.assertEqual({'default': False}, users['bob'])
 
     def test_users_old_user(self):
         distro = self._make_distro('ubuntu', bcfg)
@@ -211,8 +220,8 @@ class TestUGNormalize(TestCase):
         self.assertIn('zetta', users)
         ug_cfg = {}
         (users, groups) = self._norm(ug_cfg, distro)
-        self.assertEquals({}, users)
-        self.assertEquals({}, groups)
+        self.assertEqual({}, users)
+        self.assertEqual({}, groups)
 
     def test_users_dict_default_additional(self):
         distro = self._make_distro('ubuntu', bcfg)
@@ -223,12 +232,10 @@ class TestUGNormalize(TestCase):
         }
         (users, _groups) = self._norm(ug_cfg, distro)
         self.assertIn('bob', users)
-        self.assertEquals(",".join(distro.get_default_user()['groups']),
-                          users['bob']['groups'])
-        self.assertEquals(True,
-                          users['bob']['blah'])
-        self.assertEquals(True,
-                          users['bob']['default'])
+        self.assertEqual(",".join(distro.get_default_user()['groups']),
+                         users['bob']['groups'])
+        self.assertEqual(True, users['bob']['blah'])
+        self.assertEqual(True, users['bob']['default'])
 
     def test_users_dict_extract(self):
         distro = self._make_distro('ubuntu', bcfg)
@@ -239,8 +246,8 @@ class TestUGNormalize(TestCase):
         }
         (users, _groups) = self._norm(ug_cfg, distro)
         self.assertIn('bob', users)
-        (name, config) = distros.extract_default(users)
-        self.assertEquals(name, 'bob')
+        (name, config) = ug_util.extract_default(users)
+        self.assertEqual(name, 'bob')
         expected_config = {}
         def_config = None
         try:
@@ -255,7 +262,7 @@ class TestUGNormalize(TestCase):
         expected_config.pop('name', None)
         expected_config.pop('groups', None)
         config.pop('groups', None)
-        self.assertEquals(config, expected_config)
+        self.assertEqual(config, expected_config)
 
     def test_users_dict_default(self):
         distro = self._make_distro('ubuntu', bcfg)
@@ -266,10 +273,9 @@ class TestUGNormalize(TestCase):
         }
         (users, _groups) = self._norm(ug_cfg, distro)
         self.assertIn('bob', users)
-        self.assertEquals(",".join(distro.get_default_user()['groups']),
-                          users['bob']['groups'])
-        self.assertEquals(True,
-                          users['bob']['default'])
+        self.assertEqual(",".join(distro.get_default_user()['groups']),
+                         users['bob']['groups'])
+        self.assertEqual(True, users['bob']['default'])
 
     def test_users_dict_trans(self):
         distro = self._make_distro('ubuntu')
@@ -283,8 +289,8 @@ class TestUGNormalize(TestCase):
         (users, _groups) = self._norm(ug_cfg, distro)
         self.assertIn('joe', users)
         self.assertIn('bob', users)
-        self.assertEquals({'tr_me': True, 'default': False}, users['joe'])
-        self.assertEquals({'default': False}, users['bob'])
+        self.assertEqual({'tr_me': True, 'default': False}, users['joe'])
+        self.assertEqual({'default': False}, users['bob'])
 
     def test_users_dict(self):
         distro = self._make_distro('ubuntu')
@@ -297,5 +303,71 @@ class TestUGNormalize(TestCase):
         (users, _groups) = self._norm(ug_cfg, distro)
         self.assertIn('joe', users)
         self.assertIn('bob', users)
-        self.assertEquals({'default': False}, users['joe'])
-        self.assertEquals({'default': False}, users['bob'])
+        self.assertEqual({'default': False}, users['joe'])
+        self.assertEqual({'default': False}, users['bob'])
+
+    @mock.patch('cloudinit.util.subp')
+    def test_create_snap_user(self, mock_subp):
+        mock_subp.side_effect = [('{"username": "joe", "ssh-key-count": 1}\n',
+                                  '')]
+        distro = self._make_distro('ubuntu')
+        ug_cfg = {
+            'users': [
+                {'name': 'joe', 'snapuser': 'joe@joe.com'},
+            ],
+        }
+        (users, _groups) = self._norm(ug_cfg, distro)
+        for (user, config) in users.items():
+            print('user=%s config=%s' % (user, config))
+            username = distro.create_user(user, **config)
+
+        snapcmd = ['snap', 'create-user', '--sudoer', '--json', 'joe@joe.com']
+        mock_subp.assert_called_with(snapcmd, capture=True, logstring=snapcmd)
+        self.assertEqual(username, 'joe')
+
+    @mock.patch('cloudinit.util.subp')
+    def test_create_snap_user_known(self, mock_subp):
+        mock_subp.side_effect = [('{"username": "joe", "ssh-key-count": 1}\n',
+                                  '')]
+        distro = self._make_distro('ubuntu')
+        ug_cfg = {
+            'users': [
+                {'name': 'joe', 'snapuser': 'joe@joe.com', 'known': True},
+            ],
+        }
+        (users, _groups) = self._norm(ug_cfg, distro)
+        for (user, config) in users.items():
+            print('user=%s config=%s' % (user, config))
+            username = distro.create_user(user, **config)
+
+        snapcmd = ['snap', 'create-user', '--sudoer', '--json', '--known',
+                   'joe@joe.com']
+        mock_subp.assert_called_with(snapcmd, capture=True, logstring=snapcmd)
+        self.assertEqual(username, 'joe')
+
+    @mock.patch('cloudinit.util.system_is_snappy')
+    @mock.patch('cloudinit.util.is_group')
+    @mock.patch('cloudinit.util.subp')
+    def test_add_user_on_snappy_system(self, mock_subp, mock_isgrp,
+                                       mock_snappy):
+        mock_isgrp.return_value = False
+        mock_subp.return_value = True
+        mock_snappy.return_value = True
+        distro = self._make_distro('ubuntu')
+        ug_cfg = {
+            'users': [
+                {'name': 'joe', 'groups': 'users', 'create_groups': True},
+            ],
+        }
+        (users, _groups) = self._norm(ug_cfg, distro)
+        for (user, config) in users.items():
+            print('user=%s config=%s' % (user, config))
+            distro.add_user(user, **config)
+
+        groupcmd = ['groupadd', 'users', '--extrausers']
+        addcmd = ['useradd', 'joe', '--extrausers', '--groups', 'users', '-m']
+
+        mock_subp.assert_any_call(groupcmd)
+        mock_subp.assert_any_call(addcmd, logstring=addcmd)
+
+# vi: ts=4 expandtab

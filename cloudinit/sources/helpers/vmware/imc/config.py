@@ -1,38 +1,30 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2015 Canonical Ltd.
+# Copyright (C) 2015 VMware Inc.
 #
-#    Copyright (C) 2015 Canonical Ltd.
-#    Copyright (C) 2015 VMware Inc.
+# Author: Sankar Tanguturi <stanguturi@vmware.com>
 #
-#    Author: Sankar Tanguturi <stanguturi@vmware.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
+
 
 from .nic import Nic
 
 
-class Config:
+class Config(object):
     """
     Stores the Contents specified in the Customization
     Specification file.
     """
 
+    CUSTOM_SCRIPT = 'CUSTOM-SCRIPT|SCRIPT-NAME'
     DNS = 'DNS|NAMESERVER|'
-    SUFFIX = 'DNS|SUFFIX|'
+    DOMAINNAME = 'NETWORK|DOMAINNAME'
+    HOSTNAME = 'NETWORK|HOSTNAME'
+    MARKERID = 'MISC|MARKER-ID'
     PASS = 'PASSWORD|-PASS'
+    RESETPASS = 'PASSWORD|RESET'
+    SUFFIX = 'DNS|SUFFIX|'
     TIMEZONE = 'DATETIME|TIMEZONE'
     UTC = 'DATETIME|UTC'
-    HOSTNAME = 'NETWORK|HOSTNAME'
-    DOMAINNAME = 'NETWORK|DOMAINNAME'
 
     def __init__(self, configFile):
         self._configFile = configFile
@@ -93,3 +85,23 @@ class Config:
             res.append(Nic(nic, self._configFile))
 
         return res
+
+    @property
+    def reset_password(self):
+        """Retreives if the root password needs to be reset."""
+        resetPass = self._configFile.get(Config.RESETPASS, 'no')
+        resetPass = resetPass.lower()
+        if resetPass not in ('yes', 'no'):
+            raise ValueError('ResetPassword value should be yes/no')
+        return resetPass == 'yes'
+
+    @property
+    def marker_id(self):
+        """Returns marker id."""
+        return self._configFile.get(Config.MARKERID, None)
+
+    @property
+    def custom_script_name(self):
+        """Return the name of custom (pre/post) script."""
+        return self._configFile.get(Config.CUSTOM_SCRIPT, None)
+# vi: ts=4 expandtab

@@ -1,27 +1,17 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2012 Hewlett-Packard Development Company, L.P.
 #
-#    Copyright (C) 2012 Hewlett-Packard Development Company, L.P.
+# Author: Avishai Ish-Shalom <avishai@fewbytes.com>
+# Author: Mike Moulton <mike@meltmedia.com>
+# Author: Juerg Haefliger <juerg.haefliger@hp.com>
 #
-#    Author: Avishai Ish-Shalom <avishai@fewbytes.com>
-#    Author: Mike Moulton <mike@meltmedia.com>
-#    Author: Juerg Haefliger <juerg.haefliger@hp.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 """
+Chef
+----
 **Summary:** module that configures, starts and installs chef.
 
-**Description:** This module enables chef to be installed (from packages or
+This module enables chef to be installed (from packages or
 from gems, or from omnibus). Before this occurs chef configurations are
 written to disk (validation.pem, client.pem, firstboot.json, client.rb),
 and needed chef folders/directories are created (/etc/chef and /var/log/chef
@@ -33,7 +23,13 @@ chef will have forked into its own process) then a post run function can
 run that can do finishing activities (such as removing the validation pem
 file).
 
-It can be configured with the following option structure::
+**Internal name:** ``cc_chef``
+
+**Module frequency:** per always
+
+**Supported distros:** all
+
+**Config keys**::
 
     chef:
        directories: (defaulting to /etc/chef, /var/log/chef, /var/lib/chef,
@@ -62,6 +58,9 @@ It can be configured with the following option structure::
       log_level:
       log_location:
       node_name:
+      omnibus_url:
+      omnibus_url_retries:
+      omnibus_version:
       pid_file:
       server_url:
       show_time:
@@ -96,7 +95,7 @@ REQUIRED_CHEF_DIRS = tuple([
 ])
 
 # Used if fetching chef from a omnibus style package
-OMNIBUS_URL = "https://www.getchef.com/chef/install.sh"
+OMNIBUS_URL = "https://www.chef.io/chef/install.sh"
 OMNIBUS_URL_RETRIES = 5
 
 CHEF_VALIDATION_PEM_PATH = '/etc/chef/validation.pem'
@@ -283,6 +282,31 @@ def run_chef(chef_cfg, log):
     util.subp(cmd, capture=False)
 
 
+def install_chef_from_omnibus(url=None, retries=None, omnibus_version=None):
+    """Install an omnibus unified package from url.
+
+    @param url: URL where blob of chef content may be downloaded. Defaults to
+        OMNIBUS_URL.
+    @param retries: Number of retries to perform when attempting to read url.
+        Defaults to OMNIBUS_URL_RETRIES
+    @param omnibus_version: Optional version string to require for omnibus
+        install.
+    """
+    if url is None:
+        url = OMNIBUS_URL
+    if retries is None:
+        retries = OMNIBUS_URL_RETRIES
+
+    if omnibus_version is None:
+        args = []
+    else:
+        args = ['-v', omnibus_version]
+    content = url_helper.readurl(url=url, retries=retries).contents
+    return util.subp_blob_in_tempfile(
+        blob=content, args=args,
+        basename='chef-omnibus-install', capture=False)
+
+
 def install_chef(cloud, chef_cfg, log):
     # If chef is not installed, we install chef based on 'install_type'
     install_type = util.get_cfg_option_str(chef_cfg, 'install_type',
@@ -301,17 +325,11 @@ def install_chef(cloud, chef_cfg, log):
         # This will install and run the chef-client from packages
         cloud.distro.install_packages(('chef',))
     elif install_type == 'omnibus':
-        # This will install as a omnibus unified package
-        url = util.get_cfg_option_str(chef_cfg, "omnibus_url", OMNIBUS_URL)
-        retries = max(0, util.get_cfg_option_int(chef_cfg,
-                                                 "omnibus_url_retries",
-                                                 default=OMNIBUS_URL_RETRIES))
-        content = url_helper.readurl(url=url, retries=retries)
-        with util.tempdir() as tmpd:
-            # Use tmpdir over tmpfile to avoid 'text file busy' on execute
-            tmpf = "%s/chef-omnibus-install" % tmpd
-            util.write_file(tmpf, content, mode=0o700)
-            util.subp([tmpf], capture=False)
+        omnibus_version = util.get_cfg_option_str(chef_cfg, "omnibus_version")
+        install_chef_from_omnibus(
+            url=util.get_cfg_option_str(chef_cfg, "omnibus_url"),
+            retries=util.get_cfg_option_int(chef_cfg, "omnibus_url_retries"),
+            omnibus_version=omnibus_version)
     else:
         log.warn("Unknown chef install type '%s'", install_type)
         run = False
@@ -340,3 +358,5 @@ def install_chef_from_gems(ruby_version, chef_version, distro):
         util.subp(['/usr/bin/gem', 'install', 'chef',
                    '--no-ri', '--no-rdoc', '--bindir',
                    '/usr/bin', '-q'], capture=False)
+
+# vi: ts=4 expandtab

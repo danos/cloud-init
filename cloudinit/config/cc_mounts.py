@@ -1,22 +1,66 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2009-2010 Canonical Ltd.
+# Copyright (C) 2012 Hewlett-Packard Development Company, L.P.
 #
-#    Copyright (C) 2009-2010 Canonical Ltd.
-#    Copyright (C) 2012 Hewlett-Packard Development Company, L.P.
+# Author: Scott Moser <scott.moser@canonical.com>
+# Author: Juerg Haefliger <juerg.haefliger@hp.com>
 #
-#    Author: Scott Moser <scott.moser@canonical.com>
-#    Author: Juerg Haefliger <juerg.haefliger@hp.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
+
+"""
+Mounts
+------
+**Summary:** configure mount points and swap files
+
+This module can add or remove mountpoints from ``/etc/fstab`` as well as
+configure swap. The ``mounts`` config key takes a list of fstab entries to add.
+Each entry is specified as a list of ``[ fs_spec, fs_file, fs_vfstype,
+fs_mntops, fs-freq, fs_passno ]``. For more information on these options,
+consult the manual for ``/etc/fstab``. When specifying the ``fs_spec``, if the
+device name starts with one of ``xvd``, ``sd``, ``hd``, or ``vd``, the leading
+``/dev`` may be omitted.
+
+In order to remove a previously listed mount, an entry can be added to the
+mounts list containing ``fs_spec`` for the device to be removed but no
+mountpoint (i.e. ``[ sda1 ]`` or ``[ sda1, null ]``).
+
+The ``mount_default_fields`` config key allows default options to be specified
+for the values in a ``mounts`` entry that are not specified, aside from the
+``fs_spec`` and the ``fs_file``. If specified, this must be a list containing 7
+values. It defaults to::
+
+    mount_default_fields: [none, none, "auto", "defaults,nobootwait", "0", "2"]
+
+On a systemd booted system that default is the mostly equivalent::
+
+    mount_default_fields: [none, none, "auto",
+       "defaults,nofail,x-systemd.requires=cloud-init.service", "0", "2"]
+
+Note that `nobootwait` is an upstart specific boot option that somewhat
+equates to the more standard `nofail`.
+
+Swap files can be configured by setting the path to the swap file to create
+with ``filename``, the size of the swap file with ``size`` maximum size of
+the swap file if using an ``size: auto`` with ``maxsize``. By default no
+swap file is created.
+
+**Internal name:** ``cc_mounts``
+
+**Module frequency:** per instance
+
+**Supported distros:** all
+
+**Config keys**::
+
+    mounts:
+        - [ /dev/ephemeral0, /mnt, auto, "defaults,noexec" ]
+        - [ sdc, /opt/data ]
+        - [ xvdh, /opt/data, "auto", "defaults,nofail", "0", "0" ]
+    mount_default_fields: [None, None, "auto", "defaults,nofail", "0", "2"]
+    swap:
+        filename: <file>
+        size: <"auto"/size in bytes>
+        maxsize: <size in bytes>
+"""
 
 from string import whitespace
 
@@ -32,6 +76,7 @@ DEVICE_NAME_FILTER = r"^([x]{0,1}[shv]d[a-z][0-9]*|sr[0-9]+)$"
 DEVICE_NAME_RE = re.compile(DEVICE_NAME_FILTER)
 WS = re.compile("[%s]+" % (whitespace))
 FSTAB_PATH = "/etc/fstab"
+MNT_COMMENT = "comment=cloudconfig"
 
 LOG = logging.getLogger(__name__)
 
@@ -172,8 +217,9 @@ def suggested_swapsize(memsize=None, maxsize=None, fsys=None):
         else:
             pinfo[k] = v
 
-    LOG.debug("suggest %(size)s swap for %(mem)s memory with '%(avail)s'"
-              " disk given max=%(max_in)s [max=%(max)s]'" % pinfo)
+    LOG.debug("suggest %s swap for %s memory with '%s'"
+              " disk given max=%s [max=%s]'", pinfo['size'], pinfo['mem'],
+              pinfo['avail'], pinfo['max_in'], pinfo['max'])
     return size
 
 
@@ -187,8 +233,8 @@ def setup_swapfile(fname, size=None, maxsize=None):
     if str(size).lower() == "auto":
         try:
             memsize = util.read_meminfo()['total']
-        except IOError as e:
-            LOG.debug("Not creating swap. failed to read meminfo")
+        except IOError:
+            LOG.debug("Not creating swap: failed to read meminfo")
             return
 
         util.ensure_dir(tdir)
@@ -222,7 +268,7 @@ def handle_swapcfg(swapcfg):
        return None or (filename, size)
     """
     if not isinstance(swapcfg, dict):
-        LOG.warn("input for swap config was not a dict.")
+        LOG.warning("input for swap config was not a dict.")
         return None
 
     fname = swapcfg.get('filename', '/swap.img')
@@ -235,17 +281,18 @@ def handle_swapcfg(swapcfg):
 
     if os.path.exists(fname):
         if not os.path.exists("/proc/swaps"):
-            LOG.debug("swap file %s existed. no /proc/swaps. Being safe.",
-                      fname)
+            LOG.debug("swap file %s exists, but no /proc/swaps exists, "
+                      "being safe", fname)
             return fname
         try:
             for line in util.load_file("/proc/swaps").splitlines():
                 if line.startswith(fname + " "):
-                    LOG.debug("swap file %s already in use.", fname)
+                    LOG.debug("swap file %s already in use", fname)
                     return fname
-            LOG.debug("swap file %s existed, but not in /proc/swaps", fname)
-        except:
-            LOG.warn("swap file %s existed. Error reading /proc/swaps", fname)
+            LOG.debug("swap file %s exists, but not in /proc/swaps", fname)
+        except Exception:
+            LOG.warning("swap file %s exists. Error reading /proc/swaps",
+                        fname)
             return fname
 
     try:
@@ -256,7 +303,7 @@ def handle_swapcfg(swapcfg):
         return setup_swapfile(fname=fname, size=size, maxsize=maxsize)
 
     except Exception as e:
-        LOG.warn("failed to setup swap: %s", e)
+        LOG.warning("failed to setup swap: %s", e)
 
     return None
 
@@ -264,8 +311,9 @@ def handle_swapcfg(swapcfg):
 def handle(_name, cfg, cloud, log, _args):
     # fs_spec, fs_file, fs_vfstype, fs_mntops, fs-freq, fs_passno
     def_mnt_opts = "defaults,nobootwait"
-    if cloud.distro.uses_systemd():
-        def_mnt_opts = "defaults,nofail"
+    uses_systemd = cloud.distro.uses_systemd()
+    if uses_systemd:
+        def_mnt_opts = "defaults,nofail,x-systemd.requires=cloud-init.service"
 
     defvals = [None, None, "auto", def_mnt_opts, "0", "2"]
     defvals = cfg.get("mount_default_fields", defvals)
@@ -278,6 +326,24 @@ def handle(_name, cfg, cloud, log, _args):
     if "mounts" in cfg:
         cfgmnt = cfg["mounts"]
 
+    LOG.debug("mounts configuration is %s", cfgmnt)
+
+    fstab_lines = []
+    fstab_devs = {}
+    fstab_removed = []
+
+    for line in util.load_file(FSTAB_PATH).splitlines():
+        if MNT_COMMENT in line:
+            fstab_removed.append(line)
+            continue
+
+        try:
+            toks = WS.split(line)
+        except Exception:
+            pass
+        fstab_devs[toks[0]] = line
+        fstab_lines.append(line)
+
     for i in range(len(cfgmnt)):
         # skip something that wasn't a list
         if not isinstance(cfgmnt[i], list):
@@ -287,12 +353,17 @@ def handle(_name, cfg, cloud, log, _args):
 
         start = str(cfgmnt[i][0])
         sanitized = sanitize_devname(start, cloud.device_name_to_device, log)
-        if sanitized is None:
-            log.debug("Ignorming nonexistant named mount %s", start)
-            continue
-
         if sanitized != start:
             log.debug("changed %s => %s" % (start, sanitized))
+
+        if sanitized is None:
+            log.debug("Ignoring nonexistent named mount %s", start)
+            continue
+        elif sanitized in fstab_devs:
+            log.info("Device %s already defined in fstab: %s",
+                     sanitized, fstab_devs[sanitized])
+            continue
+
         cfgmnt[i][0] = sanitized
 
         # in case the user did not quote a field (likely fs-freq, fs_passno)
@@ -324,11 +395,17 @@ def handle(_name, cfg, cloud, log, _args):
     for defmnt in defmnts:
         start = defmnt[0]
         sanitized = sanitize_devname(start, cloud.device_name_to_device, log)
-        if sanitized is None:
-            log.debug("Ignoring nonexistant default named mount %s", start)
-            continue
         if sanitized != start:
             log.debug("changed default device %s => %s" % (start, sanitized))
+
+        if sanitized is None:
+            log.debug("Ignoring nonexistent default named mount %s", start)
+            continue
+        elif sanitized in fstab_devs:
+            log.debug("Device %s already defined in fstab: %s",
+                      sanitized, fstab_devs[sanitized])
+            continue
+
         defmnt[0] = sanitized
 
         cfgmnt_has = False
@@ -348,7 +425,7 @@ def handle(_name, cfg, cloud, log, _args):
     actlist = []
     for x in cfgmnt:
         if x[1] is None:
-            log.debug("Skipping non-existent device named %s", x[0])
+            log.debug("Skipping nonexistent device named %s", x[0])
         else:
             actlist.append(x)
 
@@ -357,49 +434,57 @@ def handle(_name, cfg, cloud, log, _args):
         actlist.append([swapret, "none", "swap", "sw", "0", "0"])
 
     if len(actlist) == 0:
-        log.debug("No modifications to fstab needed.")
+        log.debug("No modifications to fstab needed")
         return
 
-    comment = "comment=cloudconfig"
     cc_lines = []
     needswap = False
     dirs = []
     for line in actlist:
         # write 'comment' in the fs_mntops, entry,  claiming this
-        line[3] = "%s,%s" % (line[3], comment)
+        line[3] = "%s,%s" % (line[3], MNT_COMMENT)
         if line[2] == "swap":
             needswap = True
         if line[1].startswith("/"):
             dirs.append(line[1])
         cc_lines.append('\t'.join(line))
 
-    fstab_lines = []
-    for line in util.load_file(FSTAB_PATH).splitlines():
+    for d in dirs:
         try:
-            toks = WS.split(line)
-            if toks[3].find(comment) != -1:
-                continue
-        except:
-            pass
-        fstab_lines.append(line)
+            util.ensure_dir(d)
+        except Exception:
+            util.logexc(log, "Failed to make '%s' config-mount", d)
+
+    sadds = [WS.sub(" ", n) for n in cc_lines]
+    sdrops = [WS.sub(" ", n) for n in fstab_removed]
+
+    sops = (["- " + drop for drop in sdrops if drop not in sadds] +
+            ["+ " + add for add in sadds if add not in sdrops])
 
     fstab_lines.extend(cc_lines)
     contents = "%s\n" % ('\n'.join(fstab_lines))
     util.write_file(FSTAB_PATH, contents)
 
+    activate_cmds = []
     if needswap:
-        try:
-            util.subp(("swapon", "-a"))
-        except:
-            util.logexc(log, "Activating swap via 'swapon -a' failed")
+        activate_cmds.append(["swapon", "-a"])
 
-    for d in dirs:
-        try:
-            util.ensure_dir(d)
-        except:
-            util.logexc(log, "Failed to make '%s' config-mount", d)
+    if len(sops) == 0:
+        log.debug("No changes to /etc/fstab made.")
+    else:
+        log.debug("Changes to fstab: %s", sops)
+        activate_cmds.append(["mount", "-a"])
+        if uses_systemd:
+            activate_cmds.append(["systemctl", "daemon-reload"])
 
-    try:
-        util.subp(("mount", "-a"))
-    except:
-        util.logexc(log, "Activating mounts via 'mount -a' failed")
+    fmt = "Activating swap and mounts with: %s"
+    for cmd in activate_cmds:
+        fmt = "Activate mounts: %s:" + ' '.join(cmd)
+        try:
+            util.subp(cmd)
+            log.debug(fmt, "PASS")
+        except util.ProcessExecutionError:
+            log.warn(fmt, "FAIL")
+            util.logexc(log, fmt, "FAIL")
+
+# vi: ts=4 expandtab
