@@ -22,3 +22,4 @@ cc-ssh-vytta-config-module.patch
 apply-network-vyatta.patch
 debian9-build-fixes.patch
 skip-blkid-tests.patch
+azure-endpoint-fallback.patch
