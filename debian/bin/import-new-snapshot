@@ -1,0 +1,35 @@
+#!/bin/bash
+set -e
+
+error() {
+  echo "$@" >&2
+  exit 1
+}
+
+if [ "$(git rev-parse --abbrev-ref HEAD)" != "master" ]; then
+  error "Current branch is not master!"
+fi
+if [ "$(git remote get-url upstream)" != "https://git.launchpad.net/cloud-init" ]; then
+  error "Need remote called 'upstream' pointing to https://git.launchpad.net/cloud-init!"
+fi
+
+remote_master=refs/remotes/upstream/master
+
+master_version=$(git describe ${remote_master})
+master_id=$(git show-ref --verify --hash ${remote_master})
+tar=../cloud-init_${master_version}.orig.tar.xz
+
+if [ -e ${tar} ]; then
+  error "${tar} already exists!"
+fi
+
+set -x
+
+git archive --format=tar --prefix=cloud-init-${master_version}/ ${master_id} | xz > ${tar}
+pristine-tar commit ${tar} ${master_id}
+
+git update-ref refs/heads/upstream ${master_id}
+git-dpm record-new-upstream ${tar} ${master_id}
+dch -v ${master_version}-1 "New upstream snapshot."
+git add debian/changelog
+git commit --amend --message "Merge from master at ${master_version}"
