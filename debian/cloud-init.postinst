@@ -114,37 +114,7 @@ handle_preseed_local_cloud_config() {
    db_unregister "${debconf_name}" || :
 }
 
-if [ "$1" = "configure" ]; then
-   # disable ureadahead (LP: #499520)
-   dpkg-divert --package cloud-init --rename --divert \
-      /etc/init/ureadahead.conf.disabled --add /etc/init/ureadahead.conf
-   if db_get cloud-init/datasources; then
-      values="$RET"
-      if [ "${values#*MaaS}" != "${values}" ]; then
-         # if db had old MAAS spelling, fix it.
-         values=$(echo "$values" | sed 's,MaaS,MAAS,g')
-         db_set cloud-init/datasources "$values"
-      fi
-      cat > /etc/cloud/cloud.cfg.d/90_dpkg.cfg <<EOF
-# to update this file, run dpkg-reconfigure cloud-init
-datasource_list: [ $values ]
-EOF
-   fi
-
-   # we want to affect apt_pipelining on install, not wait for
-   # cloud-init to run it on next boot.
-   pipeline_f="/etc/apt/apt.conf.d/90cloud-init-pipelining"
-   if [ -f /var/lib/cloud/instance/obj.pkl ]; then
-      cloud-init single --name apt-pipelining --frequency once >/dev/null 2>&1 ||
-         echo "Warning: failed to setup apt-pipelining" 1>&2
-   elif [ ! -f "$pipeline_f" ]; then
-      # there was no cloud available, so populate it ourselves.
-      cat > "$pipeline_f" <<EOF
-//Written by cloud-init per 'apt_pipelining'
-Acquire::http::Pipeline-Depth "0";
-EOF
-   fi
-
+if [ "$1" = "configure" ] && [ -z "$2" ]; then
    # if there are maas settings pre-seeded apply them
    handle_preseed_maas
 

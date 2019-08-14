@@ -1,3 +1,205 @@
+cloud-init (18.3-5) unstable; urgency=medium
+
+  * Make tests running with current bash.
+
+ -- Bastian Blank <waldi@debian.org>  Fri, 08 Feb 2019 14:47:07 +0100
+
+cloud-init (18.3-4) unstable; urgency=medium
+
+  * Remove debconf setup of data source.
+  * Don't override apt pipelining.
+  * Only handle preseed on initial installation.
+  * Drop all config migration for versions older then Stretch.
+  * Update vcs links to point to salsa.debian.org.
+  * Drop obsolete build-dependency on dh-systemd.
+
+ -- Bastian Blank <waldi@debian.org>  Fri, 08 Feb 2019 10:39:53 +0100
+
+cloud-init (18.3-3) unstable; urgency=medium
+
+  * Start cloud-init before chronyd (Closes: #910801).
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 15 Oct 2018 10:48:01 +0200
+
+cloud-init (18.3-2) unstable; urgency=medium
+
+  * Upload to Unstable.
+  * Rename the NetworkManager hook (Closes: #909557).
+
+ -- Thomas Goirand <zigo@debian.org>  Tue, 09 Oct 2018 07:37:44 +0200
+
+cloud-init (18.3-1) experimental; urgency=medium
+
+  * New upstream release (Closes: #907672):
+    - Do not timestamp sudoers files (Closes: #788103).
+  * Drop patches applied upstream or now irrelevant:
+    - 0001-Fix-the-path-to-blkid-in-test-suite.patch
+    - 0004-debian-sources.list.patch
+    - 0005-Update-syntax-of-rsyslog-snippet-is-deprecated.patch
+    - 0008-sysvinit-fs-dependencies.patch
+    - 0010-PATCH-Fix-Python-code-style-errors-Closes-865577.patch
+    - 0011-Trust-PATH-for-udevadm-and-modprobe.patch
+  * Refreshed / rebased patches:
+    - 0002-disable-rhel-set-hostname-test.patch
+    - 0003-Make-Azure-datasource-run-without-root.patch
+    - 0006-Skip-test_apt_v3_mirror_search_dns.patch
+    - 0007-Skip-Cloudstack-tests-that-expect-network.patch
+    - 0009-Drop-all-unused-extended-version-handling.patch
+    - 0012-Fix-message-when-a-local-is-missing.patch
+  * Runtime depends on fdisk (Closes: #872114).
+  * Added Suggests: btrfs-progs, e2fsprogs, xfsprogs (Closes: #887226).
+  * Removed  Miguel Landaeta and Julien Danjou from uploaders, as they haven't
+    been active.
+  * Removed tools/hacking.py from debian/copyright (the file doesn't exist
+    anymore).
+  * Add python3-jsonschema as build-depends.
+  * Build-Depends needs 0.9.5 for python3-httpretty.
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 17 Sep 2018 13:18:40 +0200
+
+cloud-init (0.7.9-5) unstable; urgency=medium
+
+  * Test with all Python versions.
+  * Moved a bunch of build-depends to build-depends-indep.
+  * Ran wrap-and-sort -bast.
+  * Add runtime depends: cloud-guest-utils and locales (Closes: #878819).
+  * Add eatmydata and sudo as recommends.
+  * Add 0012-Fix-message-when-a-local-is-missing.patch which is Debian specific
+    as Ubuntu handles locales differently (Closes: #804918).
+  * Update / add new debconf template translations:
+    - fr.po (Closes: #819507).
+    - nl.po (Closes: #834612).
+    - de.po (Closes: #842490).
+    - pt_BR.po (Closes: #846526).
+    - it.po (Closes: #846929).
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 16 Oct 2017 20:04:32 +0000
+
+cloud-init (0.7.9-4) unstable; urgency=high
+
+  * Add patch to avoid hardcoding /sbin for modprobe and udevadm.
+    (Closes: #852564)
+
+ -- Thomas Goirand <zigo@debian.org>  Mon, 25 Sep 2017 23:58:09 +0200
+
+cloud-init (0.7.9-3) unstable; urgency=medium
+
+  * Fixed case for "OpenStack" in debian/cloud-init.templates (Closes: #841315)
+  * Removed contrib and non-free by default (Closes: #865611).
+  * Remove upstart support.
+  * Standards-Version is now 4.0.0.
+  * Overrides lintian cloud-init: init.d-script-depends-on-all-virtual-facility
+
+ -- Thomas Goirand <zigo@debian.org>  Sat, 22 Jul 2017 16:20:48 +0200
+
+cloud-init (0.7.9-2.1) unstable; urgency=low
+
+  * Non-maintainer upload.
+  * Add patch from Joonas Kylmälä to fix FTBFS. (Closes: #865577)
+
+ -- Adrian Bunk <bunk@debian.org>  Thu, 20 Jul 2017 13:24:49 +0300
+
+cloud-init (0.7.9-2) unstable; urgency=medium
+
+  * Add net-tools as runtime depends (Closes: #853926).
+  * Add depends: on lsb-base.
+
+ -- Thomas Goirand <zigo@debian.org>  Thu, 02 Feb 2017 13:23:41 +0000
+
+cloud-init (0.7.9-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Bastian Blank <waldi@debian.org>  Thu, 19 Jan 2017 16:25:04 +0100
+
+cloud-init (0.7.8-64-g166df60-1) unstable; urgency=medium
+
+  * New upstream snapshot.
+  * Adopt upstream changes to cloud.cfg.
+  * Use deb.debian.org as primary mirror.
+
+ -- Bastian Blank <waldi@debian.org>  Wed, 07 Dec 2016 13:27:36 +0100
+
+cloud-init (0.7.8-49-g9e904bb-1) unstable; urgency=medium
+
+  * New upstream snapshot.
+  * Set maintainer to Debian Cloud Team.
+  * Use debhelper compat level 10.
+
+ -- Bastian Blank <waldi@debian.org>  Tue, 29 Nov 2016 21:05:36 +0100
+
+cloud-init (0.7.8-1) unstable; urgency=medium
+
+  * Team upload.
+  * New upstream version 0.7.8 (Closes: #838748, #780637)
+  * Add README.Debian (Closes: #695327)
+  * Bump Standards-Version to 3.9.8
+    No change required.
+  * Run debconf-updatepo during clean.
+  * Skip failing test_apt_v3_mirror_search_dns.
+    This test may fail if the local domain is set.
+  * Skip Cloudstack tests that expect network.
+  * Update patch metadata.
+    1 patch forwarded upstream
+  * Update Vcs-* URLs to use HTTPS.
+  * Make example files ASCII-only.
+    They may otherwise fail to parse.
+  * Fix dependencies on {local,remote}_fs in init scripts.
+
+ -- Nicolas Braud-Santoni <nicolas@braud-santoni.eu>  Sat, 24 Sep 2016 13:57:04 +0200
+
+cloud-init (0.7.7~bzr1215-3) unstable; urgency=medium
+
+  * Depend on gdisk, needed for GPT handling.
+
+ -- Bastian Blank <bastian.blank@credativ.de>  Fri, 10 Jun 2016 16:56:41 +0200
+
+cloud-init (0.7.7~bzr1215-2) unstable; urgency=medium
+
+  * Build-depend on python3-pyflakes instead of pyflakes.
+
+ -- Bastian Blank <bastian.blank@credativ.de>  Tue, 10 May 2016 17:18:53 +0200
+
+cloud-init (0.7.7~bzr1215-1) unstable; urgency=medium
+
+  * New upstream snapshot.
+
+  [ Charles Plessy ]
+  * Translations added or updated.
+    - Danish: Joe Dalton <joedalton2@yahoo.dk>
+      Closes: #781336
+    - Dutch: Frans Spiesschaert <Frans.Spiesschaert@yucom.be>
+      Closes: #765869
+    - Japanese: Takuma Yamada <tyamada@takumayamada.com>
+      Closes: #816071
+    - Portuguese: Américo Monteiro <a_monteiro@gmx.com>
+      Closes: #816141
+    - Russian: Yuri Kozlov <yuray@komyakino.ru>
+      Closes: #761617
+    - Spanish: Jathan <jathanblackred@openmailbox.org>
+      Closes: #783564
+    - Swedish: Martin Bagge <brother@bsnet.se>
+               Anders Jonsson <anders.jonsson@norsjovallen.se>
+      Closes: #781681
+  * Update syntax of rsyslog snippet ("~" is deprecated).
+    Thanks to Tobias Wolter <towo@ydal.de> (Closes: #791934)
+
+  [ Bastian Blank ]
+  * Fix tests.
+
+ -- Bastian Blank <bastian.blank@credativ.de>  Fri, 06 May 2016 12:10:17 +0200
+
+cloud-init (0.7.7~bzr1156-2) unstable; urgency=medium
+
+  * Import data source list from Ubuntu.
+  * Clarify Azure data source.
+  * Rename failsafe to fallback.
+  * Unify data source descriptions.
+  * Drop diversion of /etc/init/ureadahead.conf.
+  * Fix backports entry in source.list template.
+
+ -- Bastian Blank <bastian.blank@credativ.de>  Wed, 24 Feb 2016 17:38:38 +0100
+
 cloud-init (0.7.7~bzr1156-1vyatta3) unstable; urgency=medium
 
   * Depend on cloud-guest-utils
@@ -29,7 +231,7 @@ cloud-init (0.7.7~bzr1156-1vyatta2) unstable; urgency=medium
 
  -- Charles (Chas) Williams <ciwillia@brocade.com>  Thu, 12 Jan 2017 18:05:24 -0500
 
-cloud-init (0.7.7~bzr1156-1vyatta1) unstable; urgency=medium
+ cloud-init (0.7.7~bzr1156-1vyatta1) unstable; urgency=medium
 
   [ Charles (Chas) Williams ]
   * Set/update the hostname from data sources
@@ -49,12 +251,6 @@ cloud-init (0.7.7~bzr1156-1vyatta1) unstable; urgency=medium
   * Fix lintian init.d-script-missing-dependency-on-remote_fs
 
  -- Jan Blunck <jblunck@brocade.com>  Thu, 26 May 2016 21:40:45 +0200
-
-cloud-init (0.7.7~bzr1156-1~bpo8+1) jessie-backports; urgency=medium
-
-  * Backported for Jessie. 
-
- -- Charles Plessy <plessy@debian.org>  Sat, 06 Feb 2016 22:34:12 +0900
 
 cloud-init (0.7.7~bzr1156-1) unstable; urgency=medium
 
@@ -99,7 +295,7 @@ cloud-init (0.7.6~bzr1022-0vyatta2) unstable; urgency=medium
 
  -- Eugene Tan <tane@brocade.com>  Mon, 19 Oct 2015 11:50:23 -0700
 
-cloud-init (0.7.6~bzr1022-0vyatta1) unstable; urgency=low
+cloud-init (0.7.6~bzr1022-0vyatta1) trusty; urgency=low
 
   [ Jan Blunck ]
   * Fix changelog version
