@@ -1,3 +1,9 @@
+cloud-init (18.3-5vyatta2) unstable; urgency=medium
+
+  * Cleanup old sources
+
+ -- Charles (Chas) Williams <ciwillia@mail.eng.vyatta.net>  Wed, 14 Aug 2019 16:45:45 -0400
+
 cloud-init (18.3-5vyatta1) unstable; urgency=medium
 
   [ Charles Plessy ]
