@@ -1,8 +1,10 @@
+# This file is part of cloud-init. See LICENSE file for license information.
+
 import os
 import shutil
 import tempfile
 
-from .. import helpers
+from cloudinit.tests import helpers
 
 from cloudinit.settings import PER_INSTANCE
 from cloudinit import stages
@@ -21,8 +23,9 @@ class TestMergeRun(helpers.FilesystemMockingTestCase):
         cfg = {
             'datasource_list': ['None'],
             'cloud_init_modules': ['write-files'],
+            'system_info': {'paths': {'run_dir': new_root}}
         }
-        ud = self.readResource('user_data.1.txt')
+        ud = helpers.readResource('user_data.1.txt')
         cloud_cfg = util.yaml_dumps(cfg)
         util.ensure_dir(os.path.join(new_root, 'etc', 'cloud'))
         util.write_file(os.path.join(new_root, 'etc',
@@ -42,13 +45,15 @@ class TestMergeRun(helpers.FilesystemMockingTestCase):
                               args=[PER_INSTANCE],
                               freq=PER_INSTANCE)
         mirrors = initer.distro.get_option('package_mirrors')
-        self.assertEquals(1, len(mirrors))
+        self.assertEqual(1, len(mirrors))
         mirror = mirrors[0]
-        self.assertEquals(mirror['arches'], ['i386', 'amd64', 'blah'])
+        self.assertEqual(mirror['arches'], ['i386', 'amd64', 'blah'])
         mods = stages.Modules(initer)
         (which_ran, failures) = mods.run_section('cloud_init_modules')
         self.assertTrue(len(failures) == 0)
         self.assertTrue(os.path.exists('/etc/blah.ini'))
         self.assertIn('write-files', which_ran)
         contents = util.load_file('/etc/blah.ini')
-        self.assertEquals(contents, 'blah')
+        self.assertEqual(contents, 'blah')
+
+# vi: ts=4 expandtab

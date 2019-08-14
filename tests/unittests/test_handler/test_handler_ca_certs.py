@@ -1,9 +1,11 @@
+# This file is part of cloud-init. See LICENSE file for license information.
+
 from cloudinit import cloud
+from cloudinit.config import cc_ca_certs
 from cloudinit import helpers
 from cloudinit import util
 
-from cloudinit.config import cc_ca_certs
-from ..helpers import TestCase
+from cloudinit.tests.helpers import TestCase
 
 import logging
 import shutil
@@ -176,8 +178,7 @@ class TestAddCaCerts(TestCase):
             mock_write.assert_has_calls([
                 mock.call("/usr/share/ca-certificates/cloud-init-ca-certs.crt",
                           cert, mode=0o644),
-                mock.call("/etc/ca-certificates.conf", expected, omode="wb"),
-                ])
+                mock.call("/etc/ca-certificates.conf", expected, omode="wb")])
             mock_load.assert_called_once_with("/etc/ca-certificates.conf")
 
     def test_single_cert_no_trailing_cr(self):
@@ -202,8 +203,7 @@ class TestAddCaCerts(TestCase):
                 mock.call("/etc/ca-certificates.conf",
                           "%s\n%s\n" % (ca_certs_content,
                                         "cloud-init-ca-certs.crt"),
-                          omode="wb"),
-                ])
+                          omode="wb")])
 
             mock_load.assert_called_once_with("/etc/ca-certificates.conf")
 
@@ -228,8 +228,7 @@ class TestAddCaCerts(TestCase):
                 mock.call("/etc/ca-certificates.conf",
                           "%s\n%s\n" % (ca_certs_content,
                                         "cloud-init-ca-certs.crt"),
-                          omode='wb'),
-                ])
+                          omode='wb')])
 
             mock_load.assert_called_once_with("/etc/ca-certificates.conf")
 
@@ -264,8 +263,7 @@ class TestRemoveDefaultCaCerts(TestCase):
 
             mock_delete.assert_has_calls([
                 mock.call("/usr/share/ca-certificates/"),
-                mock.call("/etc/ssl/certs/"),
-                ])
+                mock.call("/etc/ssl/certs/")])
 
             mock_write.assert_called_once_with(
                 "/etc/ca-certificates.conf", "", mode=0o644)
@@ -273,3 +271,5 @@ class TestRemoveDefaultCaCerts(TestCase):
             mock_subp.assert_called_once_with(
                 ('debconf-set-selections', '-'),
                 "ca-certificates ca-certificates/trust_new_crts select no")
+
+# vi: ts=4 expandtab

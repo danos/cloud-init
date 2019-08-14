@@ -1,28 +1,58 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2015 Red Hat, Inc.
 #
-#    Copyright (C) 2015 Red Hat, Inc.
+# Author: Brent Baude <bbaude@redhat.com>
 #
-#    Author: Brent Baude <bbaude@redhat.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
+"""
+RedHat Subscription
+-------------------
+**Summary:** register red hat enterprise linux based system
+
+Register a RedHat system either by username and password *or* activation and
+org. Following a sucessful registration, you can auto-attach subscriptions, set
+the service level, add subscriptions based on pool id, enable/disable yum
+repositories based on repo id, and alter the rhsm_baseurl and server-hostname
+in ``/etc/rhsm/rhs.conf``. For more details, see the ``Register RedHat
+Subscription`` example config.
+
+**Internal name:** ``cc_rh_subscription``
+
+**Module frequency:** per instance
+
+**Supported distros:** rhel, fedora
+
+**Config keys**::
+
+    rh_subscription:
+        username: <username>
+        password: <password>
+        activation-key: <activation key>
+        org: <org number>
+        auto-attach: <true/false>
+        service-level: <service level>
+        add-pool: <list of pool ids>
+        enable-repo: <list of yum repo ids>
+        disable-repo: <list of yum repo ids>
+        rhsm-baseurl: <url>
+        server-hostname: <hostname>
+"""
+
+from cloudinit import log as logging
 from cloudinit import util
 
+LOG = logging.getLogger(__name__)
 
-def handle(_name, cfg, _cloud, log, _args):
-    sm = SubscriptionManager(cfg)
-    sm.log = log
-    if not sm.is_registered:
+distros = ['fedora', 'rhel']
+
+
+def handle(name, cfg, _cloud, log, _args):
+    sm = SubscriptionManager(cfg, log=log)
+    if not sm.is_configured():
+        log.debug("%s: module not configured.", name)
+        return None
+
+    if not sm.is_registered():
         try:
             verify, verify_msg = sm._verify_keys()
             if verify is not True:
@@ -58,10 +88,9 @@ def handle(_name, cfg, _cloud, log, _args):
                 if not return_stat:
                     raise SubscriptionError("Unable to attach pools {0}"
                                             .format(sm.pools))
-            if (sm.enable_repo is not None) or (sm.disable_repo is not None):
-                return_stat = sm.update_repos(sm.enable_repo, sm.disable_repo)
-                if not return_stat:
-                    raise SubscriptionError("Unable to add or remove repos")
+            return_stat = sm.update_repos()
+            if not return_stat:
+                raise SubscriptionError("Unable to add or remove repos")
             sm.log_success("rh_subscription plugin completed successfully")
         except SubscriptionError as e:
             sm.log_warn(str(e))
@@ -80,7 +109,10 @@ class SubscriptionManager(object):
                      'rhsm-baseurl', 'server-hostname',
                      'auto-attach', 'service-level']
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, log=None):
+        if log is None:
+            log = LOG
+        self.log = log
         self.cfg = cfg
         self.rhel_cfg = self.cfg.get('rh_subscription', {})
         self.rhsm_baseurl = self.rhel_cfg.get('rhsm-baseurl')
@@ -95,7 +127,6 @@ class SubscriptionManager(object):
         self.disable_repo = self.rhel_cfg.get('disable-repo')
         self.servicelevel = self.rhel_cfg.get('service-level')
         self.subman = ['subscription-manager']
-        self.is_registered = self._is_registered()
 
     def log_success(self, msg):
         '''Simple wrapper for logging info messages. Useful for unittests'''
@@ -103,7 +134,7 @@ class SubscriptionManager(object):
 
     def log_warn(self, msg):
         '''Simple wrapper for logging warning messages. Useful for unittests'''
-        self.log.warn(msg)
+        self.log.warning(msg)
 
     def _verify_keys(self):
         '''
@@ -126,17 +157,15 @@ class SubscriptionManager(object):
                        "(True/False "
             return False, not_bool
 
-        if (self.servicelevel is not None) and \
-                ((not self.auto_attach)
-                 or (util.is_false(str(self.auto_attach)))):
-
+        if (self.servicelevel is not None) and ((not self.auto_attach) or
+           (util.is_false(str(self.auto_attach)))):
             no_auto = ("The service-level key must be used in conjunction "
                        "with the auto-attach key.  Please re-run with "
                        "auto-attach: True")
             return False, no_auto
         return True, None
 
-    def _is_registered(self):
+    def is_registered(self):
         '''
         Checks if the system is already registered and returns
         True if so, else False
@@ -180,8 +209,7 @@ class SubscriptionManager(object):
                 cmd.append("--serverurl={0}".format(self.server_hostname))
 
             try:
-                return_out, return_err = self._sub_man_cli(cmd,
-                                                           logstring_val=True)
+                return_out = self._sub_man_cli(cmd, logstring_val=True)[0]
             except util.ProcessExecutionError as e:
                 if e.stdout == "":
                     self.log_warn("Registration failed due "
@@ -204,8 +232,7 @@ class SubscriptionManager(object):
 
             # Attempting to register the system only
             try:
-                return_out, return_err = self._sub_man_cli(cmd,
-                                                           logstring_val=True)
+                return_out = self._sub_man_cli(cmd, logstring_val=True)[0]
             except util.ProcessExecutionError as e:
                 if e.stdout == "":
                     self.log_warn("Registration failed due "
@@ -220,7 +247,7 @@ class SubscriptionManager(object):
             return False
 
         reg_id = return_out.split("ID: ")[1].rstrip()
-        self.log.debug("Registered successfully with ID {0}".format(reg_id))
+        self.log.debug("Registered successfully with ID %s", reg_id)
         return True
 
     def _set_service_level(self):
@@ -228,7 +255,7 @@ class SubscriptionManager(object):
                .format(self.servicelevel)]
 
         try:
-            return_out, return_err = self._sub_man_cli(cmd)
+            return_out = self._sub_man_cli(cmd)[0]
         except util.ProcessExecutionError as e:
             if e.stdout.rstrip() != '':
                 for line in e.stdout.split("\n"):
@@ -246,10 +273,9 @@ class SubscriptionManager(object):
     def _set_auto_attach(self):
         cmd = ['attach', '--auto']
         try:
-            return_out, return_err = self._sub_man_cli(cmd)
-        except util.ProcessExecutionError:
-            self.log_warn("Auto-attach failed with: "
-                          "{0}]".format(return_err.strip()))
+            return_out = self._sub_man_cli(cmd)[0]
+        except util.ProcessExecutionError as e:
+            self.log_warn("Auto-attach failed with: {0}".format(e))
             return False
         for line in return_out.split("\n"):
             if line is not "":
@@ -266,12 +292,12 @@ class SubscriptionManager(object):
 
         # Get all available pools
         cmd = ['list', '--available', '--pool-only']
-        results, errors = self._sub_man_cli(cmd)
+        results = self._sub_man_cli(cmd)[0]
         available = (results.rstrip()).split("\n")
 
         # Get all consumed pools
         cmd = ['list', '--consumed', '--pool-only']
-        results, errors = self._sub_man_cli(cmd)
+        results = self._sub_man_cli(cmd)[0]
         consumed = (results.rstrip()).split("\n")
 
         return available, consumed
@@ -283,14 +309,14 @@ class SubscriptionManager(object):
         '''
 
         cmd = ['repos', '--list-enabled']
-        return_out, return_err = self._sub_man_cli(cmd)
+        return_out = self._sub_man_cli(cmd)[0]
         active_repos = []
         for repo in return_out.split("\n"):
             if "Repo ID:" in repo:
                 active_repos.append((repo.split(':')[1]).strip())
 
         cmd = ['repos', '--list-disabled']
-        return_out, return_err = self._sub_man_cli(cmd)
+        return_out = self._sub_man_cli(cmd)[0]
 
         inactive_repos = []
         for repo in return_out.split("\n"):
@@ -322,7 +348,7 @@ class SubscriptionManager(object):
             try:
                 self._sub_man_cli(cmd)
                 self.log.debug("Attached the following pools to your "
-                               "system: %s" % (", ".join(pool_list))
+                               "system: %s", (", ".join(pool_list))
                                .replace('--pool=', ''))
                 return True
             except util.ProcessExecutionError as e:
@@ -330,18 +356,24 @@ class SubscriptionManager(object):
                               "due to {1}".format(pool, e))
                 return False
 
-    def update_repos(self, erepos, drepos):
+    def update_repos(self):
         '''
         Takes a list of yum repo ids that need to be disabled or enabled; then
         it verifies if they are already enabled or disabled and finally
         executes the action to disable or enable
         '''
 
-        if (erepos is not None) and (not isinstance(erepos, list)):
+        erepos = self.enable_repo
+        drepos = self.disable_repo
+        if erepos is None:
+            erepos = []
+        if drepos is None:
+            drepos = []
+        if not isinstance(erepos, list):
             self.log_warn("Repo IDs must in the format of a list.")
             return False
 
-        if (drepos is not None) and (not isinstance(drepos, list)):
+        if not isinstance(drepos, list):
             self.log_warn("Repo IDs must in the format of a list.")
             return False
 
@@ -374,20 +406,21 @@ class SubscriptionManager(object):
             for fail in enable_list_fail:
                 # Check if the repo exists or not
                 if fail in active_repos:
-                    self.log.debug("Repo {0} is already enabled".format(fail))
+                    self.log.debug("Repo %s is already enabled", fail)
                 else:
                     self.log_warn("Repo {0} does not appear to "
                                   "exist".format(fail))
         if len(disable_list_fail) > 0:
             for fail in disable_list_fail:
-                self.log.debug("Repo {0} not disabled "
-                               "because it is not enabled".format(fail))
+                self.log.debug("Repo %s not disabled "
+                               "because it is not enabled", fail)
 
         cmd = ['repos']
-        if len(enable_list) > 0:
-            cmd.extend(enable_list)
         if len(disable_list) > 0:
             cmd.extend(disable_list)
+
+        if len(enable_list) > 0:
+            cmd.extend(enable_list)
 
         try:
             self._sub_man_cli(cmd)
@@ -396,9 +429,14 @@ class SubscriptionManager(object):
             return False
 
         if len(enable_list) > 0:
-            self.log.debug("Enabled the following repos: %s" %
+            self.log.debug("Enabled the following repos: %s",
                            (", ".join(enable_list)).replace('--enable=', ''))
         if len(disable_list) > 0:
-            self.log.debug("Disabled the following repos: %s" %
+            self.log.debug("Disabled the following repos: %s",
                            (", ".join(disable_list)).replace('--disable=', ''))
         return True
+
+    def is_configured(self):
+        return bool((self.userid and self.password) or self.activation_key)
+
+# vi: ts=4 expandtab

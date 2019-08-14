@@ -1,37 +1,25 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2014 Yahoo! Inc.
 #
-#    Copyright (C) 2014 Yahoo! Inc.
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
 #
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 import copy
+import httpretty as hp
 import json
 import re
 
-from .. import helpers as test_helpers
+from cloudinit.tests import helpers as test_helpers
 
-from six import StringIO
 from six.moves.urllib.parse import urlparse
+from six import StringIO
 
 from cloudinit import helpers
 from cloudinit import settings
+from cloudinit.sources import convert_vendordata, UNSET
 from cloudinit.sources import DataSourceOpenStack as ds
 from cloudinit.sources.helpers import openstack
 from cloudinit import util
-
-hp = test_helpers.import_httpretty()
 
 BASE_URL = "http://169.254.169.254"
 PUBKEY = u'ssh-rsa AAAAB3NzaC1....sIkJhq8wdX+4I3A4cYbYP ubuntu@server-460\n'
@@ -66,11 +54,11 @@ OSTACK_META = {
 CONTENT_0 = b'This is contents of /etc/foo.cfg\n'
 CONTENT_1 = b'# this is /etc/bar/bar.cfg\n'
 OS_FILES = {
-    'openstack/latest/meta_data.json': json.dumps(OSTACK_META),
-    'openstack/latest/user_data': USER_DATA,
     'openstack/content/0000': CONTENT_0,
     'openstack/content/0001': CONTENT_1,
     'openstack/latest/meta_data.json': json.dumps(OSTACK_META),
+    'openstack/latest/network_data.json': json.dumps(
+        {'links': [], 'networks': [], 'services': []}),
     'openstack/latest/user_data': USER_DATA,
     'openstack/latest/vendor_data.json': json.dumps(VENDOR_DATA),
 }
@@ -81,7 +69,10 @@ EC2_VERSIONS = [
     'latest',
 ]
 
+MOCK_PATH = 'cloudinit.sources.DataSourceOpenStack.'
 
+
+# TODO _register_uris should leverage test_ec2.register_mock_metaserver.
 def _register_uris(version, ec2_files, ec2_meta, os_files):
     """Registers a set of url patterns into httpretty that will mimic the
     same data returned by the openstack metadata service (and ec2 service)."""
@@ -135,53 +126,58 @@ def _register_uris(version, ec2_files, ec2_meta, os_files):
                     body=get_request_callback)
 
 
+def _read_metadata_service():
+    return ds.read_metadata_service(BASE_URL, retries=0, timeout=0.1)
+
+
 class TestOpenStackDataSource(test_helpers.HttprettyTestCase):
+
+    with_logs = True
     VERSION = 'latest'
 
-    @hp.activate
+    def setUp(self):
+        super(TestOpenStackDataSource, self).setUp()
+        self.tmp = self.tmp_dir()
+
     def test_successful(self):
         _register_uris(self.VERSION, EC2_FILES, EC2_META, OS_FILES)
-        f = ds.read_metadata_service(BASE_URL)
-        self.assertEquals(VENDOR_DATA, f.get('vendordata'))
-        self.assertEquals(CONTENT_0, f['files']['/etc/foo.cfg'])
-        self.assertEquals(CONTENT_1, f['files']['/etc/bar/bar.cfg'])
-        self.assertEquals(2, len(f['files']))
-        self.assertEquals(USER_DATA, f.get('userdata'))
-        self.assertEquals(EC2_META, f.get('ec2-metadata'))
-        self.assertEquals(2, f.get('version'))
+        f = _read_metadata_service()
+        self.assertEqual(VENDOR_DATA, f.get('vendordata'))
+        self.assertEqual(CONTENT_0, f['files']['/etc/foo.cfg'])
+        self.assertEqual(CONTENT_1, f['files']['/etc/bar/bar.cfg'])
+        self.assertEqual(2, len(f['files']))
+        self.assertEqual(USER_DATA, f.get('userdata'))
+        self.assertEqual(EC2_META, f.get('ec2-metadata'))
+        self.assertEqual(2, f.get('version'))
         metadata = f['metadata']
-        self.assertEquals('nova', metadata.get('availability_zone'))
-        self.assertEquals('sm-foo-test.novalocal', metadata.get('hostname'))
-        self.assertEquals('sm-foo-test.novalocal',
-                          metadata.get('local-hostname'))
-        self.assertEquals('sm-foo-test', metadata.get('name'))
-        self.assertEquals('b0fa911b-69d4-4476-bbe2-1c92bff6535c',
-                          metadata.get('uuid'))
-        self.assertEquals('b0fa911b-69d4-4476-bbe2-1c92bff6535c',
-                          metadata.get('instance-id'))
+        self.assertEqual('nova', metadata.get('availability_zone'))
+        self.assertEqual('sm-foo-test.novalocal', metadata.get('hostname'))
+        self.assertEqual('sm-foo-test.novalocal',
+                         metadata.get('local-hostname'))
+        self.assertEqual('sm-foo-test', metadata.get('name'))
+        self.assertEqual('b0fa911b-69d4-4476-bbe2-1c92bff6535c',
+                         metadata.get('uuid'))
+        self.assertEqual('b0fa911b-69d4-4476-bbe2-1c92bff6535c',
+                         metadata.get('instance-id'))
 
-    @hp.activate
     def test_no_ec2(self):
         _register_uris(self.VERSION, {}, {}, OS_FILES)
-        f = ds.read_metadata_service(BASE_URL)
-        self.assertEquals(VENDOR_DATA, f.get('vendordata'))
-        self.assertEquals(CONTENT_0, f['files']['/etc/foo.cfg'])
-        self.assertEquals(CONTENT_1, f['files']['/etc/bar/bar.cfg'])
-        self.assertEquals(USER_DATA, f.get('userdata'))
-        self.assertEquals({}, f.get('ec2-metadata'))
-        self.assertEquals(2, f.get('version'))
+        f = _read_metadata_service()
+        self.assertEqual(VENDOR_DATA, f.get('vendordata'))
+        self.assertEqual(CONTENT_0, f['files']['/etc/foo.cfg'])
+        self.assertEqual(CONTENT_1, f['files']['/etc/bar/bar.cfg'])
+        self.assertEqual(USER_DATA, f.get('userdata'))
+        self.assertEqual({}, f.get('ec2-metadata'))
+        self.assertEqual(2, f.get('version'))
 
-    @hp.activate
     def test_bad_metadata(self):
         os_files = copy.deepcopy(OS_FILES)
         for k in list(os_files.keys()):
             if k.endswith('meta_data.json'):
                 os_files.pop(k, None)
         _register_uris(self.VERSION, {}, {}, os_files)
-        self.assertRaises(openstack.NonReadable, ds.read_metadata_service,
-                          BASE_URL)
+        self.assertRaises(openstack.NonReadable, _read_metadata_service)
 
-    @hp.activate
     def test_bad_uuid(self):
         os_files = copy.deepcopy(OS_FILES)
         os_meta = copy.deepcopy(OSTACK_META)
@@ -190,75 +186,102 @@ class TestOpenStackDataSource(test_helpers.HttprettyTestCase):
             if k.endswith('meta_data.json'):
                 os_files[k] = json.dumps(os_meta)
         _register_uris(self.VERSION, {}, {}, os_files)
-        self.assertRaises(openstack.BrokenMetadata, ds.read_metadata_service,
-                          BASE_URL)
+        self.assertRaises(openstack.BrokenMetadata, _read_metadata_service)
 
-    @hp.activate
     def test_userdata_empty(self):
         os_files = copy.deepcopy(OS_FILES)
         for k in list(os_files.keys()):
             if k.endswith('user_data'):
                 os_files.pop(k, None)
         _register_uris(self.VERSION, {}, {}, os_files)
-        f = ds.read_metadata_service(BASE_URL)
-        self.assertEquals(VENDOR_DATA, f.get('vendordata'))
-        self.assertEquals(CONTENT_0, f['files']['/etc/foo.cfg'])
-        self.assertEquals(CONTENT_1, f['files']['/etc/bar/bar.cfg'])
+        f = _read_metadata_service()
+        self.assertEqual(VENDOR_DATA, f.get('vendordata'))
+        self.assertEqual(CONTENT_0, f['files']['/etc/foo.cfg'])
+        self.assertEqual(CONTENT_1, f['files']['/etc/bar/bar.cfg'])
         self.assertFalse(f.get('userdata'))
 
-    @hp.activate
     def test_vendordata_empty(self):
         os_files = copy.deepcopy(OS_FILES)
         for k in list(os_files.keys()):
             if k.endswith('vendor_data.json'):
                 os_files.pop(k, None)
         _register_uris(self.VERSION, {}, {}, os_files)
-        f = ds.read_metadata_service(BASE_URL)
-        self.assertEquals(CONTENT_0, f['files']['/etc/foo.cfg'])
-        self.assertEquals(CONTENT_1, f['files']['/etc/bar/bar.cfg'])
+        f = _read_metadata_service()
+        self.assertEqual(CONTENT_0, f['files']['/etc/foo.cfg'])
+        self.assertEqual(CONTENT_1, f['files']['/etc/bar/bar.cfg'])
         self.assertFalse(f.get('vendordata'))
 
-    @hp.activate
     def test_vendordata_invalid(self):
         os_files = copy.deepcopy(OS_FILES)
         for k in list(os_files.keys()):
             if k.endswith('vendor_data.json'):
                 os_files[k] = '{'  # some invalid json
         _register_uris(self.VERSION, {}, {}, os_files)
-        self.assertRaises(openstack.BrokenMetadata, ds.read_metadata_service,
-                          BASE_URL)
+        self.assertRaises(openstack.BrokenMetadata, _read_metadata_service)
 
-    @hp.activate
     def test_metadata_invalid(self):
         os_files = copy.deepcopy(OS_FILES)
         for k in list(os_files.keys()):
             if k.endswith('meta_data.json'):
                 os_files[k] = '{'  # some invalid json
         _register_uris(self.VERSION, {}, {}, os_files)
-        self.assertRaises(openstack.BrokenMetadata, ds.read_metadata_service,
-                          BASE_URL)
+        self.assertRaises(openstack.BrokenMetadata, _read_metadata_service)
 
-    @hp.activate
-    def test_datasource(self):
+    @test_helpers.mock.patch('cloudinit.net.dhcp.maybe_perform_dhcp_discovery')
+    def test_datasource(self, m_dhcp):
         _register_uris(self.VERSION, EC2_FILES, EC2_META, OS_FILES)
-        ds_os = ds.DataSourceOpenStack(settings.CFG_BUILTIN,
-                                       None,
-                                       helpers.Paths({}))
+        ds_os = ds.DataSourceOpenStack(
+            settings.CFG_BUILTIN, None, helpers.Paths({'run_dir': self.tmp}))
         self.assertIsNone(ds_os.version)
-        found = ds_os.get_data()
+        mock_path = MOCK_PATH + 'detect_openstack'
+        with test_helpers.mock.patch(mock_path) as m_detect_os:
+            m_detect_os.return_value = True
+            found = ds_os.get_data()
         self.assertTrue(found)
-        self.assertEquals(2, ds_os.version)
+        self.assertEqual(2, ds_os.version)
         md = dict(ds_os.metadata)
         md.pop('instance-id', None)
         md.pop('local-hostname', None)
-        self.assertEquals(OSTACK_META, md)
-        self.assertEquals(EC2_META, ds_os.ec2_metadata)
-        self.assertEquals(USER_DATA, ds_os.userdata_raw)
-        self.assertEquals(2, len(ds_os.files))
-        self.assertEquals(VENDOR_DATA, ds_os.vendordata_pure)
-        self.assertEquals(ds_os.vendordata_raw, None)
+        self.assertEqual(OSTACK_META, md)
+        self.assertEqual(EC2_META, ds_os.ec2_metadata)
+        self.assertEqual(USER_DATA, ds_os.userdata_raw)
+        self.assertEqual(2, len(ds_os.files))
+        self.assertEqual(VENDOR_DATA, ds_os.vendordata_pure)
+        self.assertIsNone(ds_os.vendordata_raw)
+        m_dhcp.assert_not_called()
 
     @hp.activate
+    @test_helpers.mock.patch('cloudinit.net.dhcp.EphemeralIPv4Network')
+    @test_helpers.mock.patch('cloudinit.net.dhcp.maybe_perform_dhcp_discovery')
+    def test_local_datasource(self, m_dhcp, m_net):
+        """OpenStackLocal calls EphemeralDHCPNetwork and gets instance data."""
+        _register_uris(self.VERSION, EC2_FILES, EC2_META, OS_FILES)
+        ds_os_local = ds.DataSourceOpenStackLocal(
+            settings.CFG_BUILTIN, None, helpers.Paths({'run_dir': self.tmp}))
+        ds_os_local._fallback_interface = 'eth9'  # Monkey patch for dhcp
+        m_dhcp.return_value = [{
+            'interface': 'eth9', 'fixed-address': '192.168.2.9',
+            'routers': '192.168.2.1', 'subnet-mask': '255.255.255.0',
+            'broadcast-address': '192.168.2.255'}]
+
+        self.assertIsNone(ds_os_local.version)
+        mock_path = MOCK_PATH + 'detect_openstack'
+        with test_helpers.mock.patch(mock_path) as m_detect_os:
+            m_detect_os.return_value = True
+            found = ds_os_local.get_data()
+        self.assertTrue(found)
+        self.assertEqual(2, ds_os_local.version)
+        md = dict(ds_os_local.metadata)
+        md.pop('instance-id', None)
+        md.pop('local-hostname', None)
+        self.assertEqual(OSTACK_META, md)
+        self.assertEqual(EC2_META, ds_os_local.ec2_metadata)
+        self.assertEqual(USER_DATA, ds_os_local.userdata_raw)
+        self.assertEqual(2, len(ds_os_local.files))
+        self.assertEqual(VENDOR_DATA, ds_os_local.vendordata_pure)
+        self.assertIsNone(ds_os_local.vendordata_raw)
+        m_dhcp.assert_called_with('eth9')
+
     def test_bad_datasource_meta(self):
         os_files = copy.deepcopy(OS_FILES)
         for k in list(os_files.keys()):
@@ -267,13 +290,19 @@ class TestOpenStackDataSource(test_helpers.HttprettyTestCase):
         _register_uris(self.VERSION, {}, {}, os_files)
         ds_os = ds.DataSourceOpenStack(settings.CFG_BUILTIN,
                                        None,
-                                       helpers.Paths({}))
+                                       helpers.Paths({'run_dir': self.tmp}))
         self.assertIsNone(ds_os.version)
-        found = ds_os.get_data()
+        mock_path = MOCK_PATH + 'detect_openstack'
+        with test_helpers.mock.patch(mock_path) as m_detect_os:
+            m_detect_os.return_value = True
+            found = ds_os.get_data()
         self.assertFalse(found)
         self.assertIsNone(ds_os.version)
+        self.assertIn(
+            'InvalidMetaDataException: Broken metadata address'
+            ' http://169.254.169.25',
+            self.logs.getvalue())
 
-    @hp.activate
     def test_no_datasource(self):
         os_files = copy.deepcopy(OS_FILES)
         for k in list(os_files.keys()):
@@ -282,17 +311,59 @@ class TestOpenStackDataSource(test_helpers.HttprettyTestCase):
         _register_uris(self.VERSION, {}, {}, os_files)
         ds_os = ds.DataSourceOpenStack(settings.CFG_BUILTIN,
                                        None,
-                                       helpers.Paths({}))
+                                       helpers.Paths({'run_dir': self.tmp}))
         ds_os.ds_cfg = {
             'max_wait': 0,
             'timeout': 0,
         }
         self.assertIsNone(ds_os.version)
-        found = ds_os.get_data()
+        mock_path = MOCK_PATH + 'detect_openstack'
+        with test_helpers.mock.patch(mock_path) as m_detect_os:
+            m_detect_os.return_value = True
+            found = ds_os.get_data()
         self.assertFalse(found)
         self.assertIsNone(ds_os.version)
 
-    @hp.activate
+    def test_network_config_disabled_by_datasource_config(self):
+        """The network_config can be disabled from datasource config."""
+        mock_path = MOCK_PATH + 'openstack.convert_net_json'
+        ds_os = ds.DataSourceOpenStack(
+            settings.CFG_BUILTIN, None, helpers.Paths({'run_dir': self.tmp}))
+        ds_os.ds_cfg = {'apply_network_config': False}
+        sample_json = {'links': [{'ethernet_mac_address': 'mymac'}],
+                       'networks': [], 'services': []}
+        ds_os.network_json = sample_json  # Ignore this content from metadata
+        with test_helpers.mock.patch(mock_path) as m_convert_json:
+            self.assertIsNone(ds_os.network_config)
+        m_convert_json.assert_not_called()
+
+    def test_network_config_from_network_json(self):
+        """The datasource gets network_config from network_data.json."""
+        mock_path = MOCK_PATH + 'openstack.convert_net_json'
+        example_cfg = {'version': 1, 'config': []}
+        ds_os = ds.DataSourceOpenStack(
+            settings.CFG_BUILTIN, None, helpers.Paths({'run_dir': self.tmp}))
+        sample_json = {'links': [{'ethernet_mac_address': 'mymac'}],
+                       'networks': [], 'services': []}
+        ds_os.network_json = sample_json
+        with test_helpers.mock.patch(mock_path) as m_convert_json:
+            m_convert_json.return_value = example_cfg
+            self.assertEqual(example_cfg, ds_os.network_config)
+        self.assertIn(
+            'network config provided via network_json', self.logs.getvalue())
+        m_convert_json.assert_called_with(sample_json, known_macs=None)
+
+    def test_network_config_cached(self):
+        """The datasource caches the network_config property."""
+        mock_path = MOCK_PATH + 'openstack.convert_net_json'
+        example_cfg = {'version': 1, 'config': []}
+        ds_os = ds.DataSourceOpenStack(
+            settings.CFG_BUILTIN, None, helpers.Paths({'run_dir': self.tmp}))
+        ds_os._network_config = example_cfg
+        with test_helpers.mock.patch(mock_path) as m_convert_json:
+            self.assertEqual(example_cfg, ds_os.network_config)
+        m_convert_json.assert_not_called()
+
     def test_disabled_datasource(self):
         os_files = copy.deepcopy(OS_FILES)
         os_meta = copy.deepcopy(OSTACK_META)
@@ -305,20 +376,52 @@ class TestOpenStackDataSource(test_helpers.HttprettyTestCase):
         _register_uris(self.VERSION, {}, {}, os_files)
         ds_os = ds.DataSourceOpenStack(settings.CFG_BUILTIN,
                                        None,
-                                       helpers.Paths({}))
+                                       helpers.Paths({'run_dir': self.tmp}))
         ds_os.ds_cfg = {
             'max_wait': 0,
             'timeout': 0,
         }
         self.assertIsNone(ds_os.version)
-        found = ds_os.get_data()
+        mock_path = MOCK_PATH + 'detect_openstack'
+        with test_helpers.mock.patch(mock_path) as m_detect_os:
+            m_detect_os.return_value = True
+            found = ds_os.get_data()
         self.assertFalse(found)
         self.assertIsNone(ds_os.version)
+
+    @hp.activate
+    def test_wb__crawl_metadata_does_not_persist(self):
+        """_crawl_metadata returns current metadata and does not cache."""
+        _register_uris(self.VERSION, EC2_FILES, EC2_META, OS_FILES)
+        ds_os = ds.DataSourceOpenStack(
+            settings.CFG_BUILTIN, None, helpers.Paths({'run_dir': self.tmp}))
+        crawled_data = ds_os._crawl_metadata()
+        self.assertEqual(UNSET, ds_os.ec2_metadata)
+        self.assertIsNone(ds_os.userdata_raw)
+        self.assertEqual(0, len(ds_os.files))
+        self.assertIsNone(ds_os.vendordata_raw)
+        self.assertEqual(
+            ['dsmode', 'ec2-metadata', 'files', 'metadata', 'networkdata',
+             'userdata', 'vendordata', 'version'],
+            sorted(crawled_data.keys()))
+        self.assertEqual('local', crawled_data['dsmode'])
+        self.assertEqual(EC2_META, crawled_data['ec2-metadata'])
+        self.assertEqual(2, len(crawled_data['files']))
+        md = copy.deepcopy(crawled_data['metadata'])
+        md.pop('instance-id')
+        md.pop('local-hostname')
+        self.assertEqual(OSTACK_META, md)
+        self.assertEqual(
+            json.loads(OS_FILES['openstack/latest/network_data.json']),
+            crawled_data['networkdata'])
+        self.assertEqual(USER_DATA, crawled_data['userdata'])
+        self.assertEqual(VENDOR_DATA, crawled_data['vendordata'])
+        self.assertEqual(2, crawled_data['version'])
 
 
 class TestVendorDataLoading(test_helpers.TestCase):
     def cvj(self, data):
-        return openstack.convert_vendordata_json(data)
+        return convert_vendordata(data)
 
     def test_vd_load_none(self):
         # non-existant vendor-data should return none
@@ -332,7 +435,7 @@ class TestVendorDataLoading(test_helpers.TestCase):
         self.assertEqual(self.cvj(data), data)
 
     def test_vd_load_dict_no_ci(self):
-        self.assertEqual(self.cvj({'foo': 'bar'}), None)
+        self.assertIsNone(self.cvj({'foo': 'bar'}))
 
     def test_vd_load_dict_ci_dict(self):
         self.assertRaises(ValueError, self.cvj,
@@ -345,3 +448,90 @@ class TestVendorDataLoading(test_helpers.TestCase):
     def test_vd_load_dict_ci_list(self):
         data = {'foo': 'bar', 'cloud-init': ['VD_1', 'VD_2']}
         self.assertEqual(self.cvj(data), data['cloud-init'])
+
+
+@test_helpers.mock.patch(MOCK_PATH + 'util.is_x86')
+class TestDetectOpenStack(test_helpers.CiTestCase):
+
+    def test_detect_openstack_non_intel_x86(self, m_is_x86):
+        """Return True on non-intel platforms because dmi isn't conclusive."""
+        m_is_x86.return_value = False
+        self.assertTrue(
+            ds.detect_openstack(), 'Expected detect_openstack == True')
+
+    @test_helpers.mock.patch(MOCK_PATH + 'util.get_proc_env')
+    @test_helpers.mock.patch(MOCK_PATH + 'util.read_dmi_data')
+    def test_not_detect_openstack_intel_x86_ec2(self, m_dmi, m_proc_env,
+                                                m_is_x86):
+        """Return False on EC2 platforms."""
+        m_is_x86.return_value = True
+        # No product_name in proc/1/environ
+        m_proc_env.return_value = {'HOME': '/'}
+
+        def fake_dmi_read(dmi_key):
+            if dmi_key == 'system-product-name':
+                return 'HVM domU'  # Nothing 'openstackish' on EC2
+            if dmi_key == 'chassis-asset-tag':
+                return ''  # Empty string on EC2
+            assert False, 'Unexpected dmi read of %s' % dmi_key
+
+        m_dmi.side_effect = fake_dmi_read
+        self.assertFalse(
+            ds.detect_openstack(), 'Expected detect_openstack == False on EC2')
+        m_proc_env.assert_called_with(1)
+
+    @test_helpers.mock.patch(MOCK_PATH + 'util.read_dmi_data')
+    def test_detect_openstack_intel_product_name_compute(self, m_dmi,
+                                                         m_is_x86):
+        """Return True on OpenStack compute and nova instances."""
+        m_is_x86.return_value = True
+        openstack_product_names = ['OpenStack Nova', 'OpenStack Compute']
+
+        for product_name in openstack_product_names:
+            m_dmi.return_value = product_name
+            self.assertTrue(
+                ds.detect_openstack(), 'Failed to detect_openstack')
+
+    @test_helpers.mock.patch(MOCK_PATH + 'util.read_dmi_data')
+    def test_detect_openstack_opentelekomcloud_chassis_asset_tag(self, m_dmi,
+                                                                 m_is_x86):
+        """Return True on OpenStack reporting OpenTelekomCloud asset-tag."""
+        m_is_x86.return_value = True
+
+        def fake_dmi_read(dmi_key):
+            if dmi_key == 'system-product-name':
+                return 'HVM domU'  # Nothing 'openstackish' on OpenTelekomCloud
+            if dmi_key == 'chassis-asset-tag':
+                return 'OpenTelekomCloud'
+            assert False, 'Unexpected dmi read of %s' % dmi_key
+
+        m_dmi.side_effect = fake_dmi_read
+        self.assertTrue(
+            ds.detect_openstack(),
+            'Expected detect_openstack == True on OpenTelekomCloud')
+
+    @test_helpers.mock.patch(MOCK_PATH + 'util.get_proc_env')
+    @test_helpers.mock.patch(MOCK_PATH + 'util.read_dmi_data')
+    def test_detect_openstack_by_proc_1_environ(self, m_dmi, m_proc_env,
+                                                m_is_x86):
+        """Return True when nova product_name specified in /proc/1/environ."""
+        m_is_x86.return_value = True
+        # Nova product_name in proc/1/environ
+        m_proc_env.return_value = {
+            'HOME': '/', 'product_name': 'OpenStack Nova'}
+
+        def fake_dmi_read(dmi_key):
+            if dmi_key == 'system-product-name':
+                return 'HVM domU'  # Nothing 'openstackish'
+            if dmi_key == 'chassis-asset-tag':
+                return ''  # Nothin 'openstackish'
+            assert False, 'Unexpected dmi read of %s' % dmi_key
+
+        m_dmi.side_effect = fake_dmi_read
+        self.assertTrue(
+            ds.detect_openstack(),
+            'Expected detect_openstack == True on OpenTelekomCloud')
+        m_proc_env.assert_called_with(1)
+
+
+# vi: ts=4 expandtab

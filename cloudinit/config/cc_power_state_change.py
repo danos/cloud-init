@@ -1,20 +1,53 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2011 Canonical Ltd.
 #
-#    Copyright (C) 2011 Canonical Ltd.
+# Author: Scott Moser <scott.moser@canonical.com>
 #
-#    Author: Scott Moser <scott.moser@canonical.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
+
+"""
+Power State Change
+------------------
+**Summary:** change power state
+
+This module handles shutdown/reboot after all config modules have been run. By
+default it will take no action, and the system will keep running unless a
+package installation/upgrade requires a system reboot (e.g. installing a new
+kernel) and ``package_reboot_if_required`` is true. The ``power_state`` config
+key accepts a dict of options. If ``mode`` is any value other than
+``poweroff``, ``halt``, or ``reboot``, then no action will be taken.
+
+The system
+can be shutdown before cloud-init has finished using the ``timeout`` option.
+The ``delay`` key specifies a duration to be added onto any shutdown command
+used. Therefore, if a 5 minute delay and a 120 second shutdown are specified,
+the maximum amount of time between cloud-init starting and the system shutting
+down is 7 minutes, and the minimum amount of time is 5 minutes. The ``delay``
+key must have an argument in a form that the ``shutdown`` utility recognizes.
+The most common format is the form ``+5`` for 5 minutes. See ``man shutdown``
+for more options.
+
+Optionally, a command can be run to determine whether or not
+the system should shut down. The command to be run should be specified in the
+``condition`` key. For command formatting, see the documentation for
+``cc_runcmd``. The specified shutdown behavior will only take place if the
+``condition`` key is omitted or the command specified by the ``condition``
+key returns 0.
+
+**Internal name:** ``cc_power_state_change``
+
+**Module frequency:** per instance
+
+**Supported distros:** all
+
+**Config keys**::
+
+    power_state:
+        delay: <now/'+minutes'>
+        mode: <poweroff/halt/reboot>
+        message: <shutdown message>
+        timeout: <seconds>
+        condition: <true/false/command>
+"""
 
 from cloudinit.settings import PER_INSTANCE
 from cloudinit import util
@@ -38,10 +71,10 @@ def givecmdline(pid):
         # Example output from procstat -c 1
         #   PID COMM             ARGS
         #     1 init             /bin/init --
-        if util.system_info()["platform"].startswith('FreeBSD'):
+        if util.is_FreeBSD():
             (output, _err) = util.subp(['procstat', '-c', str(pid)])
             line = output.splitlines()[1]
-            m = re.search('\d+ (\w|\.|-)+\s+(/\w.+)', line)
+            m = re.search(r'\d+ (\w|\.|-)+\s+(/\w.+)', line)
             return m.group(2)
         else:
             return util.load_file("/proc/%s/cmdline" % pid)
@@ -105,7 +138,7 @@ def handle(_name, cfg, _cloud, log, _args):
 
     log.debug("After pid %s ends, will execute: %s" % (mypid, ' '.join(args)))
 
-    util.fork_cb(run_after_pid_gone, mypid, cmdline, timeout, log, 
+    util.fork_cb(run_after_pid_gone, mypid, cmdline, timeout, log,
                  condition, execmd, [args, devnull_fp])
 
 
@@ -161,6 +194,7 @@ def doexit(sysexit):
 
 
 def execmd(exe_args, output=None, data_in=None):
+    ret = 1
     try:
         proc = subprocess.Popen(exe_args, stdin=subprocess.PIPE,
                                 stdout=output, stderr=subprocess.STDOUT)
@@ -221,3 +255,5 @@ def run_after_pid_gone(pid, pidcmdline, timeout, log, condition, func, args):
         fatal("Unexpected Exception when checking condition: %s" % e)
 
     func(*args)
+
+# vi: ts=4 expandtab

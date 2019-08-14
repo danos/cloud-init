@@ -1,6 +1,8 @@
+# This file is part of cloud-init. See LICENSE file for license information.
+
 import copy
 
-from .. import helpers
+from cloudinit.tests import helpers
 
 from six.moves import filterfalse
 
@@ -25,7 +27,7 @@ class TestLaunchFilter(helpers.ResourceUsingTestCase):
         for (index, count) in expected_counts.items():
             index = util.safe_int(index)
             filtered_message = launch_index.Filter(index).apply(message)
-            self.assertEquals(count_messages(filtered_message), count)
+            self.assertEqual(count_messages(filtered_message), count)
         # Ensure original message still ok/not modified
         self.assertTrue(self.equivalentMessage(message, orig_message))
 
@@ -53,7 +55,7 @@ class TestLaunchFilter(helpers.ResourceUsingTestCase):
         return True
 
     def testMultiEmailIndex(self):
-        test_data = self.readResource('filter_cloud_multipart_2.email')
+        test_data = helpers.readResource('filter_cloud_multipart_2.email')
         ud_proc = ud.UserDataProcessor(self.getCloudPaths())
         message = ud_proc.process(test_data)
         self.assertTrue(count_messages(message) > 0)
@@ -68,7 +70,7 @@ class TestLaunchFilter(helpers.ResourceUsingTestCase):
         self.assertCounts(message, expected_counts)
 
     def testHeaderEmailIndex(self):
-        test_data = self.readResource('filter_cloud_multipart_header.email')
+        test_data = helpers.readResource('filter_cloud_multipart_header.email')
         ud_proc = ud.UserDataProcessor(self.getCloudPaths())
         message = ud_proc.process(test_data)
         self.assertTrue(count_messages(message) > 0)
@@ -83,7 +85,7 @@ class TestLaunchFilter(helpers.ResourceUsingTestCase):
         self.assertCounts(message, expected_counts)
 
     def testConfigEmailIndex(self):
-        test_data = self.readResource('filter_cloud_multipart_1.email')
+        test_data = helpers.readResource('filter_cloud_multipart_1.email')
         ud_proc = ud.UserDataProcessor(self.getCloudPaths())
         message = ud_proc.process(test_data)
         self.assertTrue(count_messages(message) > 0)
@@ -97,7 +99,7 @@ class TestLaunchFilter(helpers.ResourceUsingTestCase):
         self.assertCounts(message, expected_counts)
 
     def testNoneIndex(self):
-        test_data = self.readResource('filter_cloud_multipart.yaml')
+        test_data = helpers.readResource('filter_cloud_multipart.yaml')
         ud_proc = ud.UserDataProcessor(self.getCloudPaths())
         message = ud_proc.process(test_data)
         start_count = count_messages(message)
@@ -106,7 +108,7 @@ class TestLaunchFilter(helpers.ResourceUsingTestCase):
         self.assertTrue(self.equivalentMessage(message, filtered_message))
 
     def testIndexes(self):
-        test_data = self.readResource('filter_cloud_multipart.yaml')
+        test_data = helpers.readResource('filter_cloud_multipart.yaml')
         ud_proc = ud.UserDataProcessor(self.getCloudPaths())
         message = ud_proc.process(test_data)
         start_count = count_messages(message)
@@ -130,3 +132,5 @@ class TestLaunchFilter(helpers.ResourceUsingTestCase):
             '1': 2,
         }
         self.assertCounts(message, expected_counts)
+
+# vi: ts=4 expandtab

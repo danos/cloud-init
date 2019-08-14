@@ -1,20 +1,8 @@
-#    Copyright (C) 2013 Hewlett-Packard Development Company, L.P.
+# Copyright (C) 2013 Hewlett-Packard Development Company, L.P.
 #
-#    Author: Juerg Haefliger <juerg.haefliger@hp.com>
+# Author: Juerg Haefliger <juerg.haefliger@hp.com>
 #
-#    Based on test_handler_set_hostname.py
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 from cloudinit.config import cc_timezone
 
@@ -25,15 +13,13 @@ from cloudinit import util
 
 from cloudinit.sources import DataSourceNoCloud
 
-from .. import helpers as t_help
+from cloudinit.tests import helpers as t_help
 
 from configobj import ConfigObj
-
-from six import BytesIO
-
-import shutil
-import tempfile
 import logging
+import shutil
+from six import BytesIO
+import tempfile
 
 LOG = logging.getLogger(__name__)
 
@@ -72,7 +58,9 @@ class TestTimezone(t_help.FilesystemMockingTestCase):
 
         contents = util.load_file('/etc/sysconfig/clock', decode=False)
         n_cfg = ConfigObj(BytesIO(contents))
-        self.assertEquals({'TIMEZONE': cfg['timezone']}, dict(n_cfg))
+        self.assertEqual({'TIMEZONE': cfg['timezone']}, dict(n_cfg))
 
         contents = util.load_file('/etc/localtime')
-        self.assertEquals(dummy_contents, contents.strip())
+        self.assertEqual(dummy_contents, contents.strip())
+
+# vi: ts=4 expandtab

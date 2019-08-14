@@ -1,24 +1,47 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2011 Canonical Ltd.
+# Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
 #
-#    Copyright (C) 2011 Canonical Ltd.
-#    Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
+# Author: Scott Moser <scott.moser@canonical.com>
+# Author: Juerg Haefliger <juerg.haefliger@hp.com>
 #
-#    Author: Scott Moser <scott.moser@canonical.com>
-#    Author: Juerg Haefliger <juerg.haefliger@hp.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
+
+"""
+Phone Home
+----------
+**Summary:** post data to url
+
+This module can be used to post data to a remote host after boot is complete.
+If the post url contains the string ``$INSTANCE_ID`` it will be replaced with
+the id of the current instance. Either all data can be posted or a list of
+keys to post. Available keys are:
+
+    - ``pub_key_dsa``
+    - ``pub_key_rsa``
+    - ``pub_key_ecdsa``
+    - ``instance_id``
+    - ``hostname``
+    - ``fdqn``
+
+**Internal name:** ``cc_phone_home``
+
+**Module frequency:** per instance
+
+**Supported distros:** all
+
+**Config keys**::
+
+    phone_home:
+        url: http://example.com/$INSTANCE_ID/
+        post:
+            - pub_key_dsa
+            - instance_id
+            - fqdn
+        tries: 10
+"""
 
 from cloudinit import templater
+from cloudinit import url_helper
 from cloudinit import util
 
 from cloudinit.settings import PER_INSTANCE
@@ -30,7 +53,8 @@ POST_LIST_ALL = [
     'pub_key_rsa',
     'pub_key_ecdsa',
     'instance_id',
-    'hostname'
+    'hostname',
+    'fqdn'
 ]
 
 
@@ -41,7 +65,8 @@ POST_LIST_ALL = [
 #
 # phone_home:
 #  url: http://my.foo.bar/$INSTANCE_ID/
-#  post: [ pub_key_dsa, pub_key_rsa, pub_key_ecdsa, instance_id
+#  post: [ pub_key_dsa, pub_key_rsa, pub_key_ecdsa, instance_id, hostname,
+#          fqdn ]
 #
 def handle(name, cfg, cloud, log, args):
     if len(args) != 0:
@@ -63,7 +88,7 @@ def handle(name, cfg, cloud, log, args):
     tries = ph_cfg.get('tries')
     try:
         tries = int(tries)
-    except:
+    except Exception:
         tries = 10
         util.logexc(log, "Configuration entry 'tries' is not an integer, "
                     "using %s instead", tries)
@@ -74,6 +99,7 @@ def handle(name, cfg, cloud, log, args):
     all_keys = {}
     all_keys['instance_id'] = cloud.get_instance_id()
     all_keys['hostname'] = cloud.get_hostname()
+    all_keys['fqdn'] = cloud.get_hostname(fqdn=True)
 
     pubkeys = {
         'pub_key_dsa': '/etc/ssh/ssh_host_dsa_key.pub',
@@ -84,7 +110,7 @@ def handle(name, cfg, cloud, log, args):
     for (n, path) in pubkeys.items():
         try:
             all_keys[n] = util.load_file(path)
-        except:
+        except Exception:
             util.logexc(log, "%s: failed to open, can not phone home that "
                         "data!", path)
 
@@ -111,9 +137,11 @@ def handle(name, cfg, cloud, log, args):
     }
     url = templater.render_string(url, url_params)
     try:
-        util.read_file_or_url(url, data=real_submit_keys,
-                              retries=tries, sec_between=3,
-                              ssl_details=util.fetch_ssl_details(cloud.paths))
-    except:
+        url_helper.read_file_or_url(
+            url, data=real_submit_keys, retries=tries, sec_between=3,
+            ssl_details=util.fetch_ssl_details(cloud.paths))
+    except Exception:
         util.logexc(log, "Failed to post phone home data to %s in %s tries",
                     url, tries)
+
+# vi: ts=4 expandtab

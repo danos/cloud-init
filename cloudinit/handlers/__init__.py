@@ -1,24 +1,12 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2012 Canonical Ltd.
+# Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
+# Copyright (C) 2012 Yahoo! Inc.
 #
-#    Copyright (C) 2012 Canonical Ltd.
-#    Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
-#    Copyright (C) 2012 Yahoo! Inc.
+# Author: Scott Moser <scott.moser@canonical.com>
+# Author: Juerg Haefliger <juerg.haefliger@hp.com>
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
 #
-#    Author: Scott Moser <scott.moser@canonical.com>
-#    Author: Juerg Haefliger <juerg.haefliger@hp.com>
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 import abc
 import os
@@ -71,8 +59,8 @@ INCLUSION_SRCH = sorted(list(INCLUSION_TYPES_MAP.keys()),
                         key=(lambda e: 0 - len(e)))
 
 
+@six.add_metaclass(abc.ABCMeta)
 class Handler(object):
-    __metaclass__ = abc.ABCMeta
 
     def __init__(self, frequency, version=2):
         self.handler_version = version
@@ -118,7 +106,7 @@ def run_part(mod, data, filename, payload, frequency, headers):
             mod.handle_part(data, content_type, filename, payload)
         else:
             raise ValueError("Unknown module version %s" % (mod_ver))
-    except:
+    except Exception:
         util.logexc(LOG, "Failed calling handler %s (%s, %s, %s) with "
                     "frequency %s", mod, content_type, filename, mod_ver,
                     frequency)
@@ -157,7 +145,7 @@ def walker_handle_handler(pdata, _ctype, _filename, payload):
         # register if it fails starting.
         handlers.register(mod, initialized=True)
         pdata['handlercount'] = curcount + 1
-    except:
+    except Exception:
         util.logexc(LOG, "Failed at registering python file: %s (part "
                     "handler %s)", modfname, curcount)
 
@@ -258,7 +246,7 @@ def fixup_handler(mod, def_freq=PER_INSTANCE):
     else:
         freq = mod.frequency
         if freq and freq not in FREQUENCIES:
-            LOG.warn("Handler %s has an unknown frequency %s", mod, freq)
+            LOG.warning("Handler %s has an unknown frequency %s", mod, freq)
     return mod
 
 
@@ -272,3 +260,5 @@ def type_from_starts_with(payload, default=None):
         if payload_lc.startswith(text):
             return INCLUSION_TYPES_MAP[text]
     return default
+
+# vi: ts=4 expandtab

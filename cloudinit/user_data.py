@@ -1,24 +1,12 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2012 Canonical Ltd.
+# Copyright (C) 2012 Hewlett-Packard Development Company, L.P.
+# Copyright (C) 2012 Yahoo! Inc.
 #
-#    Copyright (C) 2012 Canonical Ltd.
-#    Copyright (C) 2012 Hewlett-Packard Development Company, L.P.
-#    Copyright (C) 2012 Yahoo! Inc.
+# Author: Scott Moser <scott.moser@canonical.com>
+# Author: Juerg Haefliger <juerg.haefliger@hp.com>
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
 #
-#    Author: Scott Moser <scott.moser@canonical.com>
-#    Author: Juerg Haefliger <juerg.haefliger@hp.com>
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 import os
 
@@ -31,6 +19,7 @@ import six
 
 from cloudinit import handlers
 from cloudinit import log as logging
+from cloudinit.url_helper import read_file_or_url, UrlError
 from cloudinit import util
 
 LOG = logging.getLogger(__name__)
@@ -121,8 +110,9 @@ class UserDataProcessor(object):
                     ctype_orig = None
                     was_compressed = True
                 except util.DecompressionError as e:
-                    LOG.warn("Failed decompressing payload from %s of length"
-                             " %s due to: %s", ctype_orig, len(payload), e)
+                    LOG.warning("Failed decompressing payload from %s of"
+                                " length %s due to: %s",
+                                ctype_orig, len(payload), e)
                     continue
 
             # Attempt to figure out the payloads content-type
@@ -178,7 +168,7 @@ class UserDataProcessor(object):
                 payload = util.load_yaml(msg.get_payload(decode=True))
                 if payload:
                     payload_idx = payload.get('launch-index')
-            except:
+            except Exception:
                 pass
         # Header overrides contents, for now (?) or the other way around?
         if header_idx is not None:
@@ -233,16 +223,28 @@ class UserDataProcessor(object):
             if include_once_on and os.path.isfile(include_once_fn):
                 content = util.load_file(include_once_fn)
             else:
-                resp = util.read_file_or_url(include_url,
-                                             ssl_details=self.ssl_details)
-                if include_once_on and resp.ok():
-                    util.write_file(include_once_fn, resp.contents, mode=0o600)
-                if resp.ok():
-                    content = resp.contents
-                else:
-                    LOG.warn(("Fetching from %s resulted in"
-                              " a invalid http code of %s"),
-                             include_url, resp.code)
+                try:
+                    resp = read_file_or_url(include_url,
+                                            ssl_details=self.ssl_details)
+                    if include_once_on and resp.ok():
+                        util.write_file(include_once_fn, resp.contents,
+                                        mode=0o600)
+                    if resp.ok():
+                        content = resp.contents
+                    else:
+                        LOG.warning(("Fetching from %s resulted in"
+                                     " a invalid http code of %s"),
+                                    include_url, resp.code)
+                except UrlError as urle:
+                    message = str(urle)
+                    # Older versions of requests.exceptions.HTTPError may not
+                    # include the errant url. Append it for clarity in logs.
+                    if include_url not in message:
+                        message += ' for url: {0}'.format(include_url)
+                    LOG.warning(message)
+                except IOError as ioe:
+                    LOG.warning("Fetching from %s resulted in %s",
+                                include_url, ioe)
 
             if content is not None:
                 new_msg = convert_string(content)
@@ -334,19 +336,29 @@ def is_skippable(part):
 
 
 # Coverts a raw string into a mime message
-def convert_string(raw_data, headers=None):
+def convert_string(raw_data, content_type=NOT_MULTIPART_TYPE):
+    """convert a string (more likely bytes) or a message into
+    a mime message."""
     if not raw_data:
-        raw_data = ''
-    if not headers:
-        headers = {}
-    data = util.decode_binary(util.decomp_gzip(raw_data))
-    if "mime-version:" in data[0:4096].lower():
-        msg = util.message_from_string(data)
-        for (key, val) in headers.items():
-            _replace_header(msg, key, val)
-    else:
-        mtype = headers.get(CONTENT_TYPE, NOT_MULTIPART_TYPE)
-        maintype, subtype = mtype.split("/", 1)
-        msg = MIMEBase(maintype, subtype, *headers)
+        raw_data = b''
+
+    def create_binmsg(data, content_type):
+        maintype, subtype = content_type.split("/", 1)
+        msg = MIMEBase(maintype, subtype)
         msg.set_payload(data)
+        return msg
+
+    if isinstance(raw_data, six.text_type):
+        bdata = raw_data.encode('utf-8')
+    else:
+        bdata = raw_data
+    bdata = util.decomp_gzip(bdata, decode=False)
+    if b"mime-version:" in bdata[0:4096].lower():
+        msg = util.message_from_string(bdata.decode('utf-8'))
+    else:
+        msg = create_binmsg(bdata, content_type)
+
     return msg
+
+
+# vi: ts=4 expandtab

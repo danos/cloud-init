@@ -1,10 +1,10 @@
+# This file is part of cloud-init. See LICENSE file for license information.
+
 """Tests for handling of userdata within cloud init."""
 
 import gzip
 import logging
 import os
-import shutil
-import tempfile
 
 try:
     from unittest import mock
@@ -18,6 +18,8 @@ from email.mime.application import MIMEApplication
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 
+import httpretty
+
 from cloudinit import handlers
 from cloudinit import helpers as c_helpers
 from cloudinit import log
@@ -27,9 +29,10 @@ from cloudinit import stages
 from cloudinit import user_data as ud
 from cloudinit import util
 
-INSTANCE_ID = "i-testing"
+from cloudinit.tests import helpers
 
-from . import helpers
+
+INSTANCE_ID = "i-testing"
 
 
 class FakeDataSource(sources.DataSource):
@@ -97,17 +100,14 @@ class TestConsumeUserData(helpers.FilesystemMockingTestCase):
 
         ci = stages.Init()
         ci.datasource = FakeDataSource(blob)
-        new_root = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, new_root)
-        self.patchUtils(new_root)
-        self.patchOS(new_root)
+        self.reRoot()
         ci.fetch()
         ci.consume_data()
         cc_contents = util.load_file(ci.paths.get_ipath("cloud_config"))
         cc = util.load_yaml(cc_contents)
-        self.assertEquals(2, len(cc))
-        self.assertEquals('qux', cc['baz'])
-        self.assertEquals('qux2', cc['bar'])
+        self.assertEqual(2, len(cc))
+        self.assertEqual('qux', cc['baz'])
+        self.assertEqual('qux2', cc['bar'])
 
     def test_simple_jsonp_vendor_and_user(self):
         # test that user-data wins over vendor
@@ -126,9 +126,7 @@ class TestConsumeUserData(helpers.FilesystemMockingTestCase):
      { "op": "add", "path": "/foo", "value": "quxC" }
 ]
 '''
-        new_root = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, new_root)
-        self._patchIn(new_root)
+        self.reRoot()
         initer = stages.Init()
         initer.datasource = FakeDataSource(user_blob, vendordata=vendor_blob)
         initer.read_cfg()
@@ -144,9 +142,9 @@ class TestConsumeUserData(helpers.FilesystemMockingTestCase):
         (_which_ran, _failures) = mods.run_section('cloud_init_modules')
         cfg = mods.cfg
         self.assertIn('vendor_data', cfg)
-        self.assertEquals('qux', cfg['baz'])
-        self.assertEquals('qux2', cfg['bar'])
-        self.assertEquals('quxC', cfg['foo'])
+        self.assertEqual('qux', cfg['baz'])
+        self.assertEqual('qux2', cfg['bar'])
+        self.assertEqual('quxC', cfg['foo'])
 
     def test_simple_jsonp_no_vendor_consumed(self):
         # make sure that vendor data is not consumed
@@ -166,9 +164,7 @@ class TestConsumeUserData(helpers.FilesystemMockingTestCase):
      { "op": "add", "path": "/foo", "value": "quxC" }
 ]
 '''
-        new_root = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, new_root)
-        self._patchIn(new_root)
+        self.reRoot()
         initer = stages.Init()
         initer.datasource = FakeDataSource(user_blob, vendordata=vendor_blob)
         initer.read_cfg()
@@ -183,8 +179,8 @@ class TestConsumeUserData(helpers.FilesystemMockingTestCase):
         mods = stages.Modules(initer)
         (_which_ran, _failures) = mods.run_section('cloud_init_modules')
         cfg = mods.cfg
-        self.assertEquals('qux', cfg['baz'])
-        self.assertEquals('qux2', cfg['bar'])
+        self.assertEqual('qux', cfg['baz'])
+        self.assertEqual('qux2', cfg['bar'])
         self.assertNotIn('foo', cfg)
 
     def test_mixed_cloud_config(self):
@@ -211,18 +207,15 @@ c: d
         message.attach(message_cc)
         message.attach(message_jp)
 
+        self.reRoot()
         ci = stages.Init()
         ci.datasource = FakeDataSource(str(message))
-        new_root = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, new_root)
-        self.patchUtils(new_root)
-        self.patchOS(new_root)
         ci.fetch()
         ci.consume_data()
         cc_contents = util.load_file(ci.paths.get_ipath("cloud_config"))
         cc = util.load_yaml(cc_contents)
-        self.assertEquals(1, len(cc))
-        self.assertEquals('c', cc['a'])
+        self.assertEqual(1, len(cc))
+        self.assertEqual('c', cc['a'])
 
     def test_vendor_user_yaml_cloud_config(self):
         vendor_blob = '''
@@ -244,9 +237,7 @@ name: user
 run:
  - z
 '''
-        new_root = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, new_root)
-        self._patchIn(new_root)
+        self.reRoot()
         initer = stages.Init()
         initer.datasource = FakeDataSource(user_blob, vendordata=vendor_blob)
         initer.read_cfg()
@@ -262,8 +253,8 @@ run:
         (_which_ran, _failures) = mods.run_section('cloud_init_modules')
         cfg = mods.cfg
         self.assertIn('vendor_data', cfg)
-        self.assertEquals('c', cfg['a'])
-        self.assertEquals('user', cfg['name'])
+        self.assertEqual('c', cfg['a'])
+        self.assertEqual('user', cfg['name'])
         self.assertNotIn('x', cfg['run'])
         self.assertNotIn('y', cfg['run'])
         self.assertIn('z', cfg['run'])
@@ -280,9 +271,7 @@ vendor_data:
   enabled: True
   prefix: /bin/true
 '''
-        new_root = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, new_root)
-        self._patchIn(new_root)
+        new_root = self.reRoot()
         initer = stages.Init()
         initer.datasource = FakeDataSource(user_blob, vendordata=vendor_blob)
         initer.read_cfg()
@@ -341,10 +330,7 @@ p: 1
         paths = c_helpers.Paths({}, ds=FakeDataSource(''))
         cloud_cfg = handlers.cloud_config.CloudConfigPartHandler(paths)
 
-        new_root = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, new_root)
-        self.patchUtils(new_root)
-        self.patchOS(new_root)
+        self.reRoot()
         cloud_cfg.handle_part(None, handlers.CONTENT_START, None, None, None,
                               None)
         for i, m in enumerate(messages):
@@ -357,13 +343,14 @@ p: 1
                               None)
         contents = util.load_file(paths.get_ipath('cloud_config'))
         contents = util.load_yaml(contents)
-        self.assertEquals(contents['run'], ['b', 'c', 'stuff', 'morestuff'])
-        self.assertEquals(contents['a'], 'be')
-        self.assertEquals(contents['e'], [1, 2, 3])
-        self.assertEquals(contents['p'], 1)
+        self.assertEqual(contents['run'], ['b', 'c', 'stuff', 'morestuff'])
+        self.assertEqual(contents['a'], 'be')
+        self.assertEqual(contents['e'], [1, 2, 3])
+        self.assertEqual(contents['p'], 1)
 
     def test_unhandled_type_warning(self):
         """Raw text without magic is ignored but shows warning."""
+        self.reRoot()
         ci = stages.Init()
         data = "arbitrary text\n"
         ci.datasource = FakeDataSource(data)
@@ -401,22 +388,20 @@ c: 4
         message.attach(gzip_part(base_content2))
         ci = stages.Init()
         ci.datasource = FakeDataSource(str(message))
-        new_root = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, new_root)
-        self.patchUtils(new_root)
-        self.patchOS(new_root)
+        self.reRoot()
         ci.fetch()
         ci.consume_data()
         contents = util.load_file(ci.paths.get_ipath("cloud_config"))
         contents = util.load_yaml(contents)
         self.assertTrue(isinstance(contents, dict))
-        self.assertEquals(3, len(contents))
-        self.assertEquals(2, contents['a'])
-        self.assertEquals(3, contents['b'])
-        self.assertEquals(4, contents['c'])
+        self.assertEqual(3, len(contents))
+        self.assertEqual(2, contents['a'])
+        self.assertEqual(3, contents['b'])
+        self.assertEqual(4, contents['c'])
 
     def test_mime_text_plain(self):
         """Mime message of type text/plain is ignored but shows warning."""
+        self.reRoot()
         ci = stages.Init()
         message = MIMEBase("text", "plain")
         message.set_payload("Just text")
@@ -434,6 +419,7 @@ c: 4
 
     def test_shellscript(self):
         """Raw text starting #!/bin/sh is treated as script."""
+        self.reRoot()
         ci = stages.Init()
         script = "#!/bin/sh\necho hello\n"
         ci.datasource = FakeDataSource(script)
@@ -448,11 +434,11 @@ c: 4
 
         mockobj.assert_has_calls([
             mock.call(outpath, script, 0o700),
-            mock.call(ci.paths.get_ipath("cloud_config"), "", 0o600),
-            ])
+            mock.call(ci.paths.get_ipath("cloud_config"), "", 0o600)])
 
     def test_mime_text_x_shellscript(self):
         """Mime message of type text/x-shellscript is treated as script."""
+        self.reRoot()
         ci = stages.Init()
         script = "#!/bin/sh\necho hello\n"
         message = MIMEBase("text", "x-shellscript")
@@ -469,11 +455,11 @@ c: 4
 
         mockobj.assert_has_calls([
             mock.call(outpath, script, 0o700),
-            mock.call(ci.paths.get_ipath("cloud_config"), "", 0o600),
-            ])
+            mock.call(ci.paths.get_ipath("cloud_config"), "", 0o600)])
 
     def test_mime_text_plain_shell(self):
         """Mime type text/plain starting #!/bin/sh is treated as script."""
+        self.reRoot()
         ci = stages.Init()
         script = "#!/bin/sh\necho hello\n"
         message = MIMEBase("text", "plain")
@@ -490,11 +476,11 @@ c: 4
 
         mockobj.assert_has_calls([
             mock.call(outpath, script, 0o700),
-            mock.call(ci.paths.get_ipath("cloud_config"), "", 0o600),
-            ])
+            mock.call(ci.paths.get_ipath("cloud_config"), "", 0o600)])
 
     def test_mime_application_octet_stream(self):
         """Mime type application/octet-stream is ignored but shows warning."""
+        self.reRoot()
         ci = stages.Init()
         message = MIMEBase("application", "octet-stream")
         message.set_payload(b'\xbf\xe6\xb2\xc3\xd3\xba\x13\xa4\xd8\xa1\xcc')
@@ -518,6 +504,7 @@ c: 4
                 {'content': non_decodable}]
         message = b'#cloud-config-archive\n' + util.yaml_dumps(data).encode()
 
+        self.reRoot()
         ci = stages.Init()
         ci.datasource = FakeDataSource(message)
 
@@ -536,6 +523,63 @@ c: 4
         cfg = util.load_yaml(fs[ci.paths.get_ipath("cloud_config")])
         self.assertEqual(cfg.get('password'), 'gocubs')
         self.assertEqual(cfg.get('locale'), 'chicago')
+
+
+class TestConsumeUserDataHttp(TestConsumeUserData, helpers.HttprettyTestCase):
+
+    def setUp(self):
+        TestConsumeUserData.setUp(self)
+        helpers.HttprettyTestCase.setUp(self)
+
+    def tearDown(self):
+        TestConsumeUserData.tearDown(self)
+        helpers.HttprettyTestCase.tearDown(self)
+
+    @mock.patch('cloudinit.url_helper.time.sleep')
+    def test_include(self, mock_sleep):
+        """Test #include."""
+        included_url = 'http://hostname/path'
+        included_data = '#cloud-config\nincluded: true\n'
+        httpretty.register_uri(httpretty.GET, included_url, included_data)
+
+        blob = '#include\n%s\n' % included_url
+
+        self.reRoot()
+        ci = stages.Init()
+        ci.datasource = FakeDataSource(blob)
+        ci.fetch()
+        ci.consume_data()
+        cc_contents = util.load_file(ci.paths.get_ipath("cloud_config"))
+        cc = util.load_yaml(cc_contents)
+        self.assertTrue(cc.get('included'))
+
+    @mock.patch('cloudinit.url_helper.time.sleep')
+    def test_include_bad_url(self, mock_sleep):
+        """Test #include with a bad URL."""
+        bad_url = 'http://bad/forbidden'
+        bad_data = '#cloud-config\nbad: true\n'
+        httpretty.register_uri(httpretty.GET, bad_url, bad_data, status=403)
+
+        included_url = 'http://hostname/path'
+        included_data = '#cloud-config\nincluded: true\n'
+        httpretty.register_uri(httpretty.GET, included_url, included_data)
+
+        blob = '#include\n%s\n%s' % (bad_url, included_url)
+
+        self.reRoot()
+        ci = stages.Init()
+        ci.datasource = FakeDataSource(blob)
+        log_file = self.capture_log(logging.WARNING)
+        ci.fetch()
+        ci.consume_data()
+
+        self.assertIn("403 Client Error: Forbidden for url: %s" % bad_url,
+                      log_file.getvalue())
+
+        cc_contents = util.load_file(ci.paths.get_ipath("cloud_config"))
+        cc = util.load_yaml(cc_contents)
+        self.assertIsNone(cc.get('bad'))
+        self.assertTrue(cc.get('included'))
 
 
 class TestUDProcess(helpers.ResourceUsingTestCase):
@@ -559,3 +603,103 @@ class TestUDProcess(helpers.ResourceUsingTestCase):
         ud_proc = ud.UserDataProcessor(self.getCloudPaths())
         message = ud_proc.process(msg)
         self.assertTrue(count_messages(message) == 1)
+
+
+class TestConvertString(helpers.TestCase):
+
+    def test_handles_binary_non_utf8_decodable(self):
+        """Printable unicode (not utf8-decodable) is safely converted."""
+        blob = b'#!/bin/bash\necho \xc3\x84\n'
+        msg = ud.convert_string(blob)
+        self.assertEqual(blob, msg.get_payload(decode=True))
+
+    def test_handles_binary_utf8_decodable(self):
+        blob = b'\x32\x32'
+        msg = ud.convert_string(blob)
+        self.assertEqual(blob, msg.get_payload(decode=True))
+
+    def test_handle_headers(self):
+        text = "hi mom"
+        msg = ud.convert_string(text)
+        self.assertEqual(text, msg.get_payload(decode=False))
+
+    def test_handle_mime_parts(self):
+        """Mime parts are properly returned as a mime message."""
+        message = MIMEBase("text", "plain")
+        message.set_payload("Just text")
+        msg = ud.convert_string(str(message))
+        self.assertEqual("Just text", msg.get_payload(decode=False))
+
+
+class TestFetchBaseConfig(helpers.TestCase):
+    def test_only_builtin_gets_builtin(self):
+        ret = helpers.wrap_and_call(
+            'cloudinit.stages',
+            {'util.read_conf_with_confd': None,
+             'util.read_conf_from_cmdline': None,
+             'read_runtime_config': {'return_value': {}}},
+            stages.fetch_base_config)
+        self.assertEqual(util.get_builtin_cfg(), ret)
+
+    def test_conf_d_overrides_defaults(self):
+        builtin = util.get_builtin_cfg()
+        test_key = sorted(builtin)[0]
+        test_value = 'test'
+        ret = helpers.wrap_and_call(
+            'cloudinit.stages',
+            {'util.read_conf_with_confd':
+                {'return_value': {test_key: test_value}},
+             'util.read_conf_from_cmdline': None,
+             'read_runtime_config': {'return_value': {}}},
+            stages.fetch_base_config)
+        self.assertEqual(ret.get(test_key), test_value)
+        builtin[test_key] = test_value
+        self.assertEqual(ret, builtin)
+
+    def test_cmdline_overrides_defaults(self):
+        builtin = util.get_builtin_cfg()
+        test_key = sorted(builtin)[0]
+        test_value = 'test'
+        cmdline = {test_key: test_value}
+        ret = helpers.wrap_and_call(
+            'cloudinit.stages',
+            {'util.read_conf_from_cmdline': {'return_value': cmdline},
+             'util.read_conf_with_confd': None,
+             'read_runtime_config': None},
+            stages.fetch_base_config)
+        self.assertEqual(ret.get(test_key), test_value)
+        builtin[test_key] = test_value
+        self.assertEqual(ret, builtin)
+
+    def test_cmdline_overrides_confd_runtime_and_defaults(self):
+        builtin = {'key1': 'value0', 'key3': 'other2'}
+        conf_d = {'key1': 'value1', 'key2': 'other1'}
+        cmdline = {'key3': 'other3', 'key2': 'other2'}
+        runtime = {'key3': 'runtime3'}
+        ret = helpers.wrap_and_call(
+            'cloudinit.stages',
+            {'util.read_conf_with_confd': {'return_value': conf_d},
+             'util.get_builtin_cfg': {'return_value': builtin},
+             'read_runtime_config': {'return_value': runtime},
+             'util.read_conf_from_cmdline': {'return_value': cmdline}},
+            stages.fetch_base_config)
+        self.assertEqual(ret, {'key1': 'value1', 'key2': 'other2',
+                               'key3': 'other3'})
+
+    def test_order_precedence_is_builtin_system_runtime_cmdline(self):
+        builtin = {'key1': 'builtin0', 'key3': 'builtin3'}
+        conf_d = {'key1': 'confd1', 'key2': 'confd2', 'keyconfd1': 'kconfd1'}
+        runtime = {'key1': 'runtime1', 'key2': 'runtime2'}
+        cmdline = {'key1': 'cmdline1'}
+        ret = helpers.wrap_and_call(
+            'cloudinit.stages',
+            {'util.read_conf_with_confd': {'return_value': conf_d},
+             'util.get_builtin_cfg': {'return_value': builtin},
+             'util.read_conf_from_cmdline': {'return_value': cmdline},
+             'read_runtime_config': {'return_value': runtime},
+             },
+            stages.fetch_base_config)
+        self.assertEqual(ret, {'key1': 'cmdline1', 'key2': 'runtime2',
+                               'key3': 'builtin3', 'keyconfd1': 'kconfd1'})
+
+# vi: ts=4 expandtab
