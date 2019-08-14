@@ -1,27 +1,24 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2012 Yahoo! Inc.
 #
-#    Copyright (C) 2012 Yahoo! Inc.
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
 #
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
-from distutils import version as vr
+__VERSION__ = "18.3"
+_PACKAGED_VERSION = '@@PACKAGED_VERSION@@'
 
-
-def version():
-    return vr.StrictVersion("0.7.7")
+FEATURES = [
+    # supports network config version 1
+    'NETWORK_CONFIG_V1',
+    # supports network config version 2 (netplan)
+    'NETWORK_CONFIG_V2',
+]
 
 
 def version_string():
-    return str(version())
+    """Extract a version string from cloud-init."""
+    if not _PACKAGED_VERSION.startswith('@@'):
+        return _PACKAGED_VERSION
+    return __VERSION__
+
+# vi: ts=4 expandtab

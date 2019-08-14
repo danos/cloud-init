@@ -1,24 +1,8 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2012 Canonical Ltd.
+# Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
+# Copyright (C) 2012 Yahoo! Inc.
 #
-#    Copyright (C) 2012 Canonical Ltd.
-#    Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.
-#    Copyright (C) 2012 Yahoo! Inc.
-#
-#    Author: Scott Moser <scott.moser@canonical.com>
-#    Author: Juerg Haefliger <juerg.haefliger@hp.com>
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 import copy
 import os
@@ -27,7 +11,8 @@ import sys
 import six
 from six.moves import cPickle as pickle
 
-from cloudinit.settings import (PER_INSTANCE, FREQUENCIES, CLOUD_CONFIG)
+from cloudinit.settings import (
+    FREQUENCIES, CLOUD_CONFIG, PER_INSTANCE, RUN_CLOUD_CONFIG)
 
 from cloudinit import handlers
 
@@ -43,14 +28,17 @@ from cloudinit import distros
 from cloudinit import helpers
 from cloudinit import importer
 from cloudinit import log as logging
+from cloudinit import net
+from cloudinit.net import cmdline
+from cloudinit.reporting import events
 from cloudinit import sources
 from cloudinit import type_utils
 from cloudinit import util
-from cloudinit.reporting import events
 
 LOG = logging.getLogger(__name__)
 
 NULL_DATA_SOURCE = None
+NO_PREVIOUS_INSTANCE_ID = "NO_PREVIOUS_INSTANCE_ID"
 
 
 class Init(object):
@@ -65,6 +53,8 @@ class Init(object):
         self._distro = None
         # Changed only when a fetch occurs
         self.datasource = NULL_DATA_SOURCE
+        self.ds_restored = False
+        self._previous_iid = None
 
         if reporter is None:
             reporter = events.ReportEventStack(
@@ -79,6 +69,7 @@ class Init(object):
         self._distro = None
         if reset_ds:
             self.datasource = NULL_DATA_SOURCE
+            self.ds_restored = False
 
     @property
     def distro(self):
@@ -140,9 +131,8 @@ class Init(object):
         ]
         return initial_dirs
 
-    def purge_cache(self, rm_instance_lnk=True):
-        rm_list = []
-        rm_list.append(self.paths.boot_finished)
+    def purge_cache(self, rm_instance_lnk=False):
+        rm_list = [self.paths.boot_finished]
         if rm_instance_lnk:
             rm_list.append(self.paths.instance_link)
         for f in rm_list:
@@ -172,8 +162,8 @@ class Init(object):
                 except OSError as e:
                     error = e
 
-            LOG.warn("Failed changing perms on '%s'. tried: %s. %s",
-                     log_file, ','.join(perms), error)
+            LOG.warning("Failed changing perms on '%s'. tried: %s. %s",
+                        log_file, ','.join(perms), error)
 
     def read_cfg(self, extra_fns=None):
         # None check so that we don't keep on re-loading if empty
@@ -193,40 +183,18 @@ class Init(object):
         # We try to restore from a current link and static path
         # by using the instance link, if purge_cache was called
         # the file wont exist.
-        pickled_fn = self.paths.get_ipath_cur('obj_pkl')
-        pickle_contents = None
-        try:
-            pickle_contents = util.load_file(pickled_fn, decode=False)
-        except Exception as e:
-            if os.path.isfile(pickled_fn):
-                LOG.warn("failed loading pickle in %s: %s" % (pickled_fn, e))
-            pass
-
-        # This is expected so just return nothing
-        # successfully loaded...
-        if not pickle_contents:
-            return None
-        try:
-            return pickle.loads(pickle_contents)
-        except Exception:
-            util.logexc(LOG, "Failed loading pickled blob from %s", pickled_fn)
-            return None
+        return _pkl_load(self.paths.get_ipath_cur('obj_pkl'))
 
     def _write_to_cache(self):
         if self.datasource is NULL_DATA_SOURCE:
             return False
-        pickled_fn = self.paths.get_ipath_cur("obj_pkl")
-        try:
-            pk_contents = pickle.dumps(self.datasource)
-        except Exception:
-            util.logexc(LOG, "Failed pickling datasource %s", self.datasource)
-            return False
-        try:
-            util.write_file(pickled_fn, pk_contents, omode="wb", mode=0o400)
-        except Exception:
-            util.logexc(LOG, "Failed pickling datasource to %s", pickled_fn)
-            return False
-        return True
+        if util.get_cfg_option_bool(self.cfg, 'manual_cache_clean', False):
+            # The empty file in instance/ dir indicates manual cleaning,
+            # and can be read by ds-identify.
+            util.write_file(
+                self.paths.get_ipath_cur("manual_clean_marker"),
+                omode="w", content="")
+        return _pkl_store(self.datasource, self.paths.get_ipath_cur("obj_pkl"))
 
     def _get_datasources(self):
         # Any config provided???
@@ -238,21 +206,47 @@ class Init(object):
         cfg_list = self.cfg.get('datasource_list') or []
         return (cfg_list, pkg_list)
 
-    def _get_data_source(self):
+    def _restore_from_checked_cache(self, existing):
+        if existing not in ("check", "trust"):
+            raise ValueError("Unexpected value for existing: %s" % existing)
+
+        ds = self._restore_from_cache()
+        if not ds:
+            return (None, "no cache found")
+
+        run_iid_fn = self.paths.get_runpath('instance_id')
+        if os.path.exists(run_iid_fn):
+            run_iid = util.load_file(run_iid_fn).strip()
+        else:
+            run_iid = None
+
+        if run_iid == ds.get_instance_id():
+            return (ds, "restored from cache with run check: %s" % ds)
+        elif existing == "trust":
+            return (ds, "restored from cache: %s" % ds)
+        else:
+            if (hasattr(ds, 'check_instance_id') and
+                    ds.check_instance_id(self.cfg)):
+                return (ds, "restored from checked cache: %s" % ds)
+            else:
+                return (None, "cache invalid in datasource: %s" % ds)
+
+    def _get_data_source(self, existing):
         if self.datasource is not NULL_DATA_SOURCE:
             return self.datasource
 
         with events.ReportEventStack(
                 name="check-cache",
-                description="attempting to read from cache",
+                description="attempting to read from cache [%s]" % existing,
                 parent=self.reporter) as myrep:
-            ds = self._restore_from_cache()
-            if ds:
-                LOG.debug("Restored from cache, datasource: %s", ds)
-                myrep.description = "restored from cache"
-            else:
-                myrep.description = "no cache found"
+
+            ds, desc = self._restore_from_checked_cache(existing)
+            myrep.description = desc
+            self.ds_restored = bool(ds)
+            LOG.debug(myrep.description)
+
         if not ds:
+            util.del_file(self.paths.instance_link)
             (cfg_list, pkg_list) = self._get_datasources()
             # Deep copy so that user-data handlers can not modify
             # (which will affect user-data handlers down the line...)
@@ -315,25 +309,43 @@ class Init(object):
 
         # What the instance id was and is...
         iid = self.datasource.get_instance_id()
-        previous_iid = None
         iid_fn = os.path.join(dp, 'instance-id')
-        try:
-            previous_iid = util.load_file(iid_fn).strip()
-        except Exception:
-            pass
-        if not previous_iid:
-            previous_iid = iid
+
+        previous_iid = self.previous_iid()
         util.write_file(iid_fn, "%s\n" % iid)
+        util.write_file(self.paths.get_runpath('instance_id'), "%s\n" % iid)
         util.write_file(os.path.join(dp, 'previous-instance-id'),
                         "%s\n" % (previous_iid))
+
+        self._write_to_cache()
         # Ensure needed components are regenerated
         # after change of instance which may cause
         # change of configuration
         self._reset()
         return iid
 
-    def fetch(self):
-        return self._get_data_source()
+    def previous_iid(self):
+        if self._previous_iid is not None:
+            return self._previous_iid
+
+        dp = self.paths.get_cpath('data')
+        iid_fn = os.path.join(dp, 'instance-id')
+        try:
+            self._previous_iid = util.load_file(iid_fn).strip()
+        except Exception:
+            self._previous_iid = NO_PREVIOUS_INSTANCE_ID
+
+        LOG.debug("previous iid found to be %s", self._previous_iid)
+        return self._previous_iid
+
+    def is_new_instance(self):
+        previous = self.previous_iid()
+        ret = (previous == NO_PREVIOUS_INSTANCE_ID or
+               previous != self.datasource.get_instance_id())
+        return ret
+
+    def fetch(self, existing="check"):
+        return self._get_data_source(existing=existing)
 
     def instancify(self):
         return self._reflect_cur_instance()
@@ -346,10 +358,26 @@ class Init(object):
                            reporter=self.reporter)
 
     def update(self):
-        if not self._write_to_cache():
-            return
         self._store_userdata()
         self._store_vendordata()
+
+    def setup_datasource(self):
+        with events.ReportEventStack("setup-datasource",
+                                     "setting up datasource",
+                                     parent=self.reporter):
+            if self.datasource is None:
+                raise RuntimeError("Datasource is None, cannot setup.")
+            self.datasource.setup(is_new_instance=self.is_new_instance())
+
+    def activate_datasource(self):
+        with events.ReportEventStack("activate-datasource",
+                                     "activating datasource",
+                                     parent=self.reporter):
+            if self.datasource is None:
+                raise RuntimeError("Datasource is None, cannot activate.")
+            self.datasource.activate(cfg=self.cfg,
+                                     is_new_instance=self.is_new_instance())
+            self._write_to_cache()
 
     def _store_userdata(self):
         raw_ud = self.datasource.get_userdata_raw()
@@ -429,9 +457,9 @@ class Init(object):
                     mod_locs, looked_locs = importer.find_module(
                         mod_name, [''], ['list_types', 'handle_part'])
                     if not mod_locs:
-                        LOG.warn("Could not find a valid user-data handler"
-                                 " named %s in file %s (searched %s)",
-                                 mod_name, fname, looked_locs)
+                        LOG.warning("Could not find a valid user-data handler"
+                                    " named %s in file %s (searched %s)",
+                                    mod_name, fname, looked_locs)
                         continue
                     mod = importer.import_module(mod_locs[0])
                     mod = handlers.fixup_handler(mod)
@@ -497,7 +525,7 @@ class Init(object):
                 c_handlers.initialized.remove(mod)
                 try:
                     handlers.call_end(mod, data, frequency)
-                except:
+                except Exception:
                     util.logexc(LOG, "Failed to finalize handler: %s", mod)
 
         try:
@@ -509,13 +537,13 @@ class Init(object):
     def consume_data(self, frequency=PER_INSTANCE):
         # Consume the userdata first, because we need want to let the part
         # handlers run first (for merging stuff)
-        with events.ReportEventStack(
-            "consume-user-data", "reading and applying user-data",
-            parent=self.reporter):
+        with events.ReportEventStack("consume-user-data",
+                                     "reading and applying user-data",
+                                     parent=self.reporter):
                 self._consume_userdata(frequency)
-        with events.ReportEventStack(
-            "consume-vendor-data", "reading and applying vendor-data",
-            parent=self.reporter):
+        with events.ReportEventStack("consume-vendor-data",
+                                     "reading and applying vendor-data",
+                                     parent=self.reporter):
                 self._consume_vendordata(frequency)
 
         # Perform post-consumption adjustments so that
@@ -550,7 +578,8 @@ class Init(object):
 
         if not isinstance(vdcfg, dict):
             vdcfg = {'enabled': False}
-            LOG.warn("invalid 'vendor_data' setting. resetting to: %s", vdcfg)
+            LOG.warning("invalid 'vendor_data' setting. resetting to: %s",
+                        vdcfg)
 
         enabled = vdcfg.get('enabled')
         no_handlers = vdcfg.get('disabled_handlers', None)
@@ -587,6 +616,57 @@ class Init(object):
         # Run the handlers
         self._do_handlers(user_data_msg, c_handlers_list, frequency)
 
+    def _find_networking_config(self):
+        disable_file = os.path.join(
+            self.paths.get_cpath('data'), 'upgraded-network')
+        if os.path.exists(disable_file):
+            return (None, disable_file)
+
+        cmdline_cfg = ('cmdline', cmdline.read_kernel_cmdline_config())
+        dscfg = ('ds', None)
+        if self.datasource and hasattr(self.datasource, 'network_config'):
+            dscfg = ('ds', self.datasource.network_config)
+        sys_cfg = ('system_cfg', self.cfg.get('network'))
+
+        for loc, ncfg in (cmdline_cfg, sys_cfg, dscfg):
+            if net.is_disabled_cfg(ncfg):
+                LOG.debug("network config disabled by %s", loc)
+                return (None, loc)
+            if ncfg:
+                return (ncfg, loc)
+        return (self.distro.generate_fallback_config(), "fallback")
+
+    def apply_network_config(self, bring_up):
+        netcfg, src = self._find_networking_config()
+        if netcfg is None:
+            LOG.info("network config is disabled by %s", src)
+            return
+
+        try:
+            LOG.debug("applying net config names for %s", netcfg)
+            self.distro.apply_network_config_names(netcfg)
+        except Exception as e:
+            LOG.warning("Failed to rename devices: %s", e)
+
+        if (self.datasource is not NULL_DATA_SOURCE and
+                not self.is_new_instance()):
+            LOG.debug("not a new instance. network config is not applied.")
+            return
+
+        LOG.info("Applying network configuration from %s bringup=%s: %s",
+                 src, bring_up, netcfg)
+        try:
+            return self.distro.apply_network_config(netcfg, bring_up=bring_up)
+        except net.RendererNotFoundError as e:
+            LOG.error("Unable to render networking. Network config is "
+                      "likely broken: %s", e)
+            return
+        except NotImplementedError:
+            LOG.warning("distro '%s' does not implement apply_network_config. "
+                        "networking may not be configured properly.",
+                        self.distro)
+            return
+
 
 class Modules(object):
     def __init__(self, init, cfg_files=None, reporter=None):
@@ -617,7 +697,9 @@ class Modules(object):
         module_list = []
         if name not in self.cfg:
             return module_list
-        cfg_mods = self.cfg[name]
+        cfg_mods = self.cfg.get(name)
+        if not cfg_mods:
+            return module_list
         # Create 'module_list', an array of hashes
         # Where hash['mod'] = module name
         #       hash['freq'] = frequency
@@ -655,7 +737,7 @@ class Modules(object):
             else:
                 raise TypeError(("Failed to read '%s' item in config,"
                                  " unknown type %s") %
-                                 (item, type_utils.obj_name(item)))
+                                (item, type_utils.obj_name(item)))
         return module_list
 
     def _fixup_modules(self, raw_mods):
@@ -668,15 +750,15 @@ class Modules(object):
             if not mod_name:
                 continue
             if freq and freq not in FREQUENCIES:
-                LOG.warn(("Config specified module %s"
-                          " has an unknown frequency %s"), raw_name, freq)
+                LOG.warning(("Config specified module %s"
+                             " has an unknown frequency %s"), raw_name, freq)
                 # Reset it so when ran it will get set to a known value
                 freq = None
             mod_locs, looked_locs = importer.find_module(
                 mod_name, ['', type_utils.obj_name(config)], ['handle'])
             if not mod_locs:
-                LOG.warn("Could not find module named %s (searched %s)",
-                         mod_name, looked_locs)
+                LOG.warning("Could not find module named %s (searched %s)",
+                            mod_name, looked_locs)
                 continue
             mod = config.fixup_module(importer.import_module(mod_locs[0]))
             mostly_mods.append([mod, raw_name, freq, run_args])
@@ -746,45 +828,85 @@ class Modules(object):
         skipped = []
         forced = []
         overridden = self.cfg.get('unverified_modules', [])
+        active_mods = []
+        all_distros = set([distros.ALL_DISTROS])
         for (mod, name, _freq, _args) in mostly_mods:
-            worked_distros = set(mod.distros)
+            worked_distros = set(mod.distros)  # Minimally [] per fixup_modules
             worked_distros.update(
                 distros.Distro.expand_osfamily(mod.osfamilies))
 
-            # module does not declare 'distros' or lists this distro
-            if not worked_distros or d_name in worked_distros:
-                continue
-
-            if name in overridden:
-                forced.append(name)
-            else:
-                skipped.append(name)
+            # Skip only when the following conditions are all met:
+            #  - distros are defined in the module != ALL_DISTROS
+            #  - the current d_name isn't in distros
+            #  - and the module is unverified and not in the unverified_modules
+            #    override list
+            if worked_distros and worked_distros != all_distros:
+                if d_name not in worked_distros:
+                    if name not in overridden:
+                        skipped.append(name)
+                        continue
+                    forced.append(name)
+            active_mods.append([mod, name, _freq, _args])
 
         if skipped:
-            LOG.info("Skipping modules %s because they are not verified "
-                      "on distro '%s'.  To run anyway, add them to "
-                      "'unverified_modules' in config.", skipped, d_name)
+            LOG.info("Skipping modules '%s' because they are not verified "
+                     "on distro '%s'.  To run anyway, add them to "
+                     "'unverified_modules' in config.",
+                     ','.join(skipped), d_name)
         if forced:
-            LOG.info("running unverified_modules: %s", forced)
+            LOG.info("running unverified_modules: '%s'", ', '.join(forced))
 
-        return self._run_modules(mostly_mods)
+        return self._run_modules(active_mods)
+
+
+def read_runtime_config():
+    return util.read_conf(RUN_CLOUD_CONFIG)
 
 
 def fetch_base_config():
-    base_cfgs = []
-    default_cfg = util.get_builtin_cfg()
-    kern_contents = util.read_cc_from_cmdline()
+    return util.mergemanydict(
+        [
+            # builtin config
+            util.get_builtin_cfg(),
+            # Anything in your conf.d or 'default' cloud.cfg location.
+            util.read_conf_with_confd(CLOUD_CONFIG),
+            # runtime config
+            read_runtime_config(),
+            # Kernel/cmdline parameters override system config
+            util.read_conf_from_cmdline(),
+        ], reverse=True)
 
-    # Kernel/cmdline parameters override system config
-    if kern_contents:
-        base_cfgs.append(util.load_yaml(kern_contents, default={}))
 
-    # Anything in your conf.d location??
-    # or the 'default' cloud.cfg location???
-    base_cfgs.append(util.read_conf_with_confd(CLOUD_CONFIG))
+def _pkl_store(obj, fname):
+    try:
+        pk_contents = pickle.dumps(obj)
+    except Exception:
+        util.logexc(LOG, "Failed pickling datasource %s", obj)
+        return False
+    try:
+        util.write_file(fname, pk_contents, omode="wb", mode=0o400)
+    except Exception:
+        util.logexc(LOG, "Failed pickling datasource to %s", fname)
+        return False
+    return True
 
-    # And finally the default gets to play
-    if default_cfg:
-        base_cfgs.append(default_cfg)
 
-    return util.mergemanydict(base_cfgs)
+def _pkl_load(fname):
+    pickle_contents = None
+    try:
+        pickle_contents = util.load_file(fname, decode=False)
+    except Exception as e:
+        if os.path.isfile(fname):
+            LOG.warning("failed loading pickle in %s: %s", fname, e)
+        pass
+
+    # This is allowed so just return nothing successfully loaded...
+    if not pickle_contents:
+        return None
+    try:
+        return pickle.loads(pickle_contents)
+    except Exception:
+        util.logexc(LOG, "Failed loading pickled blob from %s", fname)
+        return None
+
+# vi: ts=4 expandtab

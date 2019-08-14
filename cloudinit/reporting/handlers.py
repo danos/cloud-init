@@ -1,12 +1,12 @@
-# vi: ts=4 expandtab
+# This file is part of cloud-init. See LICENSE file for license information.
 
 import abc
 import json
 import six
 
-from ..registry import DictRegistry
-from .. import (url_helper, util)
-from .. import log as logging
+from cloudinit import log as logging
+from cloudinit.registry import DictRegistry
+from cloudinit import (url_helper, util)
 
 
 LOG = logging.getLogger(__name__)
@@ -36,8 +36,8 @@ class LogHandler(ReportingHandler):
             input_level = level
             try:
                 level = getattr(logging, level.upper())
-            except:
-                LOG.warn("invalid level '%s', using WARN", input_level)
+            except Exception:
+                LOG.warning("invalid level '%s', using WARN", input_level)
                 level = logging.WARN
         self.level = level
 
@@ -81,11 +81,13 @@ class WebHookHandler(ReportingHandler):
                 self.endpoint, data=json.dumps(event.as_dict()),
                 timeout=self.timeout,
                 retries=self.retries, ssl_details=self.ssl_details)
-        except:
-            LOG.warn("failed posting event: %s" % event.as_string())
+        except Exception:
+            LOG.warning("failed posting event: %s", event.as_string())
 
 
 available_handlers = DictRegistry()
 available_handlers.register_item('log', LogHandler)
 available_handlers.register_item('print', PrintHandler)
 available_handlers.register_item('webhook', WebHookHandler)
+
+# vi: ts=4 expandtab

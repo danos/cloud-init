@@ -1,6 +1,7 @@
-# Copyright 2015 Canonical Ltd.
-# This file is part of cloud-init.  See LICENCE file for license information.
+# Copyright (C) 2015 Canonical Ltd.
 #
+# This file is part of cloud-init. See LICENSE file for license information.
+
 """
 events for reporting.
 
@@ -33,11 +34,13 @@ class ReportingEvent(object):
     """Encapsulation of event formatting."""
 
     def __init__(self, event_type, name, description,
-                 origin=DEFAULT_EVENT_ORIGIN, timestamp=time.time()):
+                 origin=DEFAULT_EVENT_ORIGIN, timestamp=None):
         self.event_type = event_type
         self.name = name
         self.description = description
         self.origin = origin
+        if timestamp is None:
+            timestamp = time.time()
         self.timestamp = timestamp
 
     def as_string(self):
@@ -189,7 +192,7 @@ class ReportEventStack(object):
 
     def _childrens_finish_info(self):
         for cand_result in (status.FAIL, status.WARN):
-            for name, (value, msg) in self.children.items():
+            for _name, (value, _msg) in self.children.items():
                 if value == cand_result:
                     return (value, self.message)
         return (self.result, self.message)
@@ -243,4 +246,4 @@ def _collect_file_info(files):
                     'encoding': 'base64'})
     return ret
 
-# vi: ts=4 expandtab syntax=python
+# vi: ts=4 expandtab

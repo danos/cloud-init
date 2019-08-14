@@ -1,110 +1,116 @@
-# vi: ts=4 expandtab
+# Author: Neal Shrader <neal@digitalocean.com>
+# Author: Ben Howard  <bh@digitalocean.com>
 #
-#    Author: Neal Shrader <neal@digitalocean.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
+
+# DigitalOcean Droplet API:
+# https://developers.digitalocean.com/documentation/metadata/
 
 from cloudinit import log as logging
-from cloudinit import util
 from cloudinit import sources
-from cloudinit import ec2_utils
+from cloudinit import util
 
-import functools
-
+import cloudinit.sources.helpers.digitalocean as do_helper
 
 LOG = logging.getLogger(__name__)
 
 BUILTIN_DS_CONFIG = {
-    'metadata_url': 'http://169.254.169.254/metadata/v1/',
-    'mirrors_url': 'http://mirrors.digitalocean.com/'
+    'metadata_url': 'http://169.254.169.254/metadata/v1.json',
 }
-MD_RETRIES = 0
-MD_TIMEOUT = 1
+
+# Wait for a up to a minute, retrying the meta-data server
+# every 2 seconds.
+MD_RETRIES = 30
+MD_TIMEOUT = 2
+MD_WAIT_RETRY = 2
+MD_USE_IPV4LL = True
 
 
 class DataSourceDigitalOcean(sources.DataSource):
+
+    dsname = 'DigitalOcean'
+
     def __init__(self, sys_cfg, distro, paths):
         sources.DataSource.__init__(self, sys_cfg, distro, paths)
+        self.distro = distro
         self.metadata = dict()
         self.ds_cfg = util.mergemanydict([
             util.get_cfg_by_path(sys_cfg, ["datasource", "DigitalOcean"], {}),
             BUILTIN_DS_CONFIG])
         self.metadata_address = self.ds_cfg['metadata_url']
+        self.retries = self.ds_cfg.get('retries', MD_RETRIES)
+        self.timeout = self.ds_cfg.get('timeout', MD_TIMEOUT)
+        self.use_ip4LL = self.ds_cfg.get('use_ip4LL', MD_USE_IPV4LL)
+        self.wait_retry = self.ds_cfg.get('wait_retry', MD_WAIT_RETRY)
+        self._network_config = None
 
-        if self.ds_cfg.get('retries'):
-            self.retries = self.ds_cfg['retries']
-        else:
-            self.retries = MD_RETRIES
+    def _get_sysinfo(self):
+        return do_helper.read_sysinfo()
 
-        if self.ds_cfg.get('timeout'):
-            self.timeout = self.ds_cfg['timeout']
-        else:
-            self.timeout = MD_TIMEOUT
+    def _get_data(self):
+        (is_do, droplet_id) = self._get_sysinfo()
 
-    def get_data(self):
-        caller = functools.partial(util.read_file_or_url,
-                                   timeout=self.timeout, retries=self.retries)
-
-        def mcaller(url):
-            return caller(url).contents
-
-        md = ec2_utils.MetadataMaterializer(mcaller(self.metadata_address),
-                                            base_url=self.metadata_address,
-                                            caller=mcaller)
-
-        self.metadata = md.materialize()
-
-        if self.metadata.get('id'):
-            return True
-        else:
+        # only proceed if we know we are on DigitalOcean
+        if not is_do:
             return False
 
-    def get_userdata_raw(self):
-        return "\n".join(self.metadata['user-data'])
+        LOG.info("Running on digital ocean. droplet_id=%s", droplet_id)
 
-    def get_vendordata_raw(self):
-        return "\n".join(self.metadata['vendor-data'])
+        ipv4LL_nic = None
+        if self.use_ip4LL:
+            ipv4LL_nic = do_helper.assign_ipv4_link_local()
 
-    def get_public_ssh_keys(self):
-        public_keys = self.metadata['public-keys']
-        if isinstance(public_keys, list):
-            return public_keys
-        else:
-            return [public_keys]
+        md = do_helper.read_metadata(
+            self.metadata_address, timeout=self.timeout,
+            sec_between=self.wait_retry, retries=self.retries)
+
+        self.metadata_full = md
+        self.metadata['instance-id'] = md.get('droplet_id', droplet_id)
+        self.metadata['local-hostname'] = md.get('hostname', droplet_id)
+        self.metadata['interfaces'] = md.get('interfaces')
+        self.metadata['public-keys'] = md.get('public_keys')
+        self.metadata['availability_zone'] = md.get('region', 'default')
+        self.vendordata_raw = md.get("vendor_data", None)
+        self.userdata_raw = md.get("user_data", None)
+
+        if ipv4LL_nic:
+            do_helper.del_ipv4_link_local(ipv4LL_nic)
+
+        return True
+
+    def check_instance_id(self, sys_cfg):
+        return sources.instance_id_matches_system_uuid(
+            self.get_instance_id(), 'system-serial-number')
 
     @property
-    def availability_zone(self):
-        return self.metadata['region']
+    def network_config(self):
+        """Configure the networking. This needs to be done each boot, since
+           the IP information may have changed due to snapshot and/or
+           migration.
+        """
 
-    def get_instance_id(self):
-        return self.metadata['id']
+        if self._network_config:
+            return self._network_config
 
-    def get_hostname(self, fqdn=False, resolve_ip=False):
-        return self.metadata['hostname']
+        interfaces = self.metadata.get('interfaces')
+        LOG.debug(interfaces)
+        if not interfaces:
+            raise Exception("Unable to get meta-data from server....")
 
-    def get_package_mirror_info(self):
-        return self.ds_cfg['mirrors_url']
+        nameservers = self.metadata_full['dns']['nameservers']
+        self._network_config = do_helper.convert_network_configuration(
+            interfaces, nameservers)
+        return self._network_config
 
-    @property
-    def launch_index(self):
-        return None
 
 # Used to match classes to dependencies
 datasources = [
-  (DataSourceDigitalOcean, (sources.DEP_FILESYSTEM, sources.DEP_NETWORK)),
-  ]
+    (DataSourceDigitalOcean, (sources.DEP_FILESYSTEM, )),
+]
 
 
 # Return a list of data sources that match this set of dependencies
 def get_datasource_list(depends):
     return sources.list_from_depends(depends, datasources)
+
+# vi: ts=4 expandtab

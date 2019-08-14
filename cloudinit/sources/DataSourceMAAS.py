@@ -1,26 +1,14 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2012 Canonical Ltd.
+# Copyright (C) 2012 Yahoo! Inc.
 #
-#    Copyright (C) 2012 Canonical Ltd.
-#    Copyright (C) 2012 Yahoo! Inc.
+# Author: Scott Moser <scott.moser@canonical.com>
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
 #
-#    Author: Scott Moser <scott.moser@canonical.com>
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 from __future__ import print_function
 
-import errno
+import hashlib
 import os
 import time
 
@@ -32,7 +20,14 @@ from cloudinit import util
 LOG = logging.getLogger(__name__)
 MD_VERSION = "2012-03-01"
 
-BINARY_FIELDS = ('user-data',)
+DS_FIELDS = [
+    # remote path, location in dictionary, binary data?, optional?
+    ("meta-data/instance-id", 'meta-data/instance-id', False, False),
+    ("meta-data/local-hostname", 'meta-data/local-hostname', False, False),
+    ("meta-data/public-keys", 'meta-data/public-keys', False, True),
+    ('meta-data/vendor-data', 'vendor-data', True, True),
+    ('user-data', 'user-data', True, True),
+]
 
 
 class DataSourceMAAS(sources.DataSource):
@@ -43,43 +38,39 @@ class DataSourceMAAS(sources.DataSource):
       instance-id
       user-data
       hostname
+      vendor-data
     """
+
+    dsname = "MAAS"
+    id_hash = None
+    _oauth_helper = None
+
     def __init__(self, sys_cfg, distro, paths):
         sources.DataSource.__init__(self, sys_cfg, distro, paths)
         self.base_url = None
         self.seed_dir = os.path.join(paths.seed_dir, 'maas')
-        self.oauth_helper = self._get_helper()
+        self.id_hash = get_id_from_ds_cfg(self.ds_cfg)
 
-    def _get_helper(self):
-        mcfg = self.ds_cfg
-        # If we are missing token_key, token_secret or consumer_key
-        # then just do non-authed requests
-        for required in ('token_key', 'token_secret', 'consumer_key'):
-            if required not in mcfg:
-                return url_helper.OauthUrlHelper()
-
-        return url_helper.OauthUrlHelper(
-            consumer_key=mcfg['consumer_key'], token_key=mcfg['token_key'],
-            token_secret=mcfg['token_secret'],
-            consumer_secret=mcfg.get('consumer_secret'))
+    @property
+    def oauth_helper(self):
+        if not self._oauth_helper:
+            self._oauth_helper = get_oauth_helper(self.ds_cfg)
+        return self._oauth_helper
 
     def __str__(self):
         root = sources.DataSource.__str__(self)
         return "%s [%s]" % (root, self.base_url)
 
-    def get_data(self):
+    def _get_data(self):
         mcfg = self.ds_cfg
 
         try:
-            (userdata, metadata) = read_maas_seed_dir(self.seed_dir)
-            self.userdata_raw = userdata
-            self.metadata = metadata
-            self.base_url = self.seed_dir
+            self._set_data(self.seed_dir, read_maas_seed_dir(self.seed_dir))
             return True
         except MAASSeedDirNone:
             pass
         except MAASSeedDirMalformed as exc:
-            LOG.warn("%s was malformed: %s" % (self.seed_dir, exc))
+            LOG.warning("%s was malformed: %s", self.seed_dir, exc)
             raise
 
         # If there is no metadata_url, then we're not configured
@@ -95,17 +86,28 @@ class DataSourceMAAS(sources.DataSource):
             if not self.wait_for_metadata_service(url):
                 return False
 
-            self.base_url = url
-
-            (userdata, metadata) = read_maas_seed_url(
-                self.base_url, read_file_or_url=self.oauth_helper.readurl,
-                paths=self.paths, retries=1)
-            self.userdata_raw = userdata
-            self.metadata = metadata
+            self._set_data(
+                url, read_maas_seed_url(
+                    url, read_file_or_url=self.oauth_helper.readurl,
+                    paths=self.paths, retries=1))
             return True
         except Exception:
             util.logexc(LOG, "Failed fetching metadata from url %s", url)
             return False
+
+    def _set_data(self, url, data):
+        # takes a url for base_url and a tuple of userdata, metadata, vd.
+        self.base_url = url
+        ud, md, vd = data
+        self.userdata_raw = ud
+        self.metadata = md
+        self.vendordata_pure = vd
+        if vd:
+            try:
+                self.vendordata_raw = sources.convert_vendordata(vd)
+            except ValueError as e:
+                LOG.warning("Invalid content in vendor-data: %s", e)
+                self.vendordata_raw = None
 
     def wait_for_metadata_service(self, url):
         mcfg = self.ds_cfg
@@ -123,9 +125,11 @@ class DataSourceMAAS(sources.DataSource):
             if timeout in mcfg:
                 timeout = int(mcfg.get("timeout", timeout))
         except Exception:
-            LOG.warn("Failed to get timeout, using %s" % timeout)
+            LOG.warning("Failed to get timeout, using %s", timeout)
 
         starttime = time.time()
+        if url.endswith("/"):
+            url = url[:-1]
         check_url = "%s/%s/meta-data/instance-id" % (url, MD_VERSION)
         urls = [check_url]
         url = self.oauth_helper.wait_for_url(
@@ -139,29 +143,45 @@ class DataSourceMAAS(sources.DataSource):
 
         return bool(url)
 
+    def check_instance_id(self, sys_cfg):
+        """locally check if the current system is the same instance.
+
+        MAAS doesn't provide a real instance-id, and if it did, it is
+        still only available over the network.  We need to check based
+        only on local resources.  So compute a hash based on Oauth tokens."""
+        if self.id_hash is None:
+            return False
+        ncfg = util.get_cfg_by_path(sys_cfg, ("datasource", self.dsname), {})
+        return (self.id_hash == get_id_from_ds_cfg(ncfg))
+
+
+def get_oauth_helper(cfg):
+    """Return an oauth helper instance for values in cfg.
+
+       @raises ValueError from OauthUrlHelper if some required fields have
+               true-ish values but others do not."""
+    keys = ('consumer_key', 'consumer_secret', 'token_key', 'token_secret')
+    kwargs = dict([(r, cfg.get(r)) for r in keys])
+    return url_helper.OauthUrlHelper(**kwargs)
+
+
+def get_id_from_ds_cfg(ds_cfg):
+    """Given a config, generate a unique identifier for this node."""
+    fields = ('consumer_key', 'token_key', 'token_secret')
+    idstr = '\0'.join([ds_cfg.get(f, "") for f in fields])
+    # store the encoding version as part of the hash in the event
+    # that it ever changed we can compute older versions.
+    return 'v1:' + hashlib.sha256(idstr.encode('utf-8')).hexdigest()
+
 
 def read_maas_seed_dir(seed_d):
-    """
-    Return user-data and metadata for a maas seed dir in seed_d.
-    Expected format of seed_d are the following files:
-      * instance-id
-      * local-hostname
-      * user-data
-    """
-    if not os.path.isdir(seed_d):
+    if seed_d.startswith("file://"):
+        seed_d = seed_d[7:]
+    if not os.path.isdir(seed_d) or len(os.listdir(seed_d)) == 0:
         raise MAASSeedDirNone("%s: not a directory")
 
-    files = ('local-hostname', 'instance-id', 'user-data', 'public-keys')
-    md = {}
-    for fname in files:
-        try:
-            md[fname] = util.load_file(os.path.join(seed_d, fname),
-                                       decode=fname not in BINARY_FIELDS)
-        except IOError as e:
-            if e.errno != errno.ENOENT:
-                raise
-
-    return check_seed_contents(md, seed_d)
+    # seed_dir looks in seed_dir, not seed_dir/VERSION
+    return read_maas_seed_url("file://%s" % seed_d, version=None)
 
 
 def read_maas_seed_url(seed_url, read_file_or_url=None, timeout=None,
@@ -175,73 +195,78 @@ def read_maas_seed_url(seed_url, read_file_or_url=None, timeout=None,
       * <seed_url>/<version>/meta-data/instance-id
       * <seed_url>/<version>/meta-data/local-hostname
       * <seed_url>/<version>/user-data
+    If version is None, then <version>/ will not be used.
     """
-    base_url = "%s/%s" % (seed_url, version)
-    file_order = [
-        'local-hostname',
-        'instance-id',
-        'public-keys',
-        'user-data',
-    ]
-    files = {
-        'local-hostname': "%s/%s" % (base_url, 'meta-data/local-hostname'),
-        'instance-id': "%s/%s" % (base_url, 'meta-data/instance-id'),
-        'public-keys': "%s/%s" % (base_url, 'meta-data/public-keys'),
-        'user-data': "%s/%s" % (base_url, 'user-data'),
-    }
-
     if read_file_or_url is None:
-        read_file_or_url = util.read_file_or_url
+        read_file_or_url = url_helper.read_file_or_url
+
+    if seed_url.endswith("/"):
+        seed_url = seed_url[:-1]
 
     md = {}
-    for name in file_order:
-        url = files.get(name)
-        if name == 'user-data':
-            item_retries = 0
+    for path, _dictname, binary, optional in DS_FIELDS:
+        if version is None:
+            url = "%s/%s" % (seed_url, path)
         else:
-            item_retries = retries
-
+            url = "%s/%s/%s" % (seed_url, version, path)
         try:
             ssl_details = util.fetch_ssl_details(paths)
-            resp = read_file_or_url(url, retries=item_retries,
-                                    timeout=timeout, ssl_details=ssl_details)
+            resp = read_file_or_url(url, retries=retries, timeout=timeout,
+                                    ssl_details=ssl_details)
             if resp.ok():
-                if name in BINARY_FIELDS:
-                    md[name] = resp.contents
+                if binary:
+                    md[path] = resp.contents
                 else:
-                    md[name] = util.decode_binary(resp.contents)
+                    md[path] = util.decode_binary(resp.contents)
             else:
-                LOG.warn(("Fetching from %s resulted in"
-                          " an invalid http code %s"), url, resp.code)
+                LOG.warning(("Fetching from %s resulted in"
+                             " an invalid http code %s"), url, resp.code)
         except url_helper.UrlError as e:
-            if e.code != 404:
-                raise
+            if e.code == 404 and not optional:
+                raise MAASSeedDirMalformed(
+                    "Missing required %s: %s" % (path, e))
+            elif e.code != 404:
+                raise e
+
     return check_seed_contents(md, seed_url)
 
 
 def check_seed_contents(content, seed):
-    """Validate if content is Is the content a dict that is valid as a
-       return for a datasource.
-       Either return a (userdata, metadata) tuple or
+    """Validate if dictionary content valid as a return for a datasource.
+       Either return a (userdata, metadata, vendordata) tuple or
        Raise MAASSeedDirMalformed or MAASSeedDirNone
     """
-    md_required = ('instance-id', 'local-hostname')
-    if len(content) == 0:
+    ret = {}
+    missing = []
+    for spath, dpath, _binary, optional in DS_FIELDS:
+        if spath not in content:
+            if not optional:
+                missing.append(spath)
+            continue
+
+        if "/" in dpath:
+            top, _, p = dpath.partition("/")
+            if top not in ret:
+                ret[top] = {}
+            ret[top][p] = content[spath]
+        else:
+            ret[dpath] = content[spath]
+
+    if len(ret) == 0:
         raise MAASSeedDirNone("%s: no data files found" % seed)
 
-    found = list(content.keys())
-    missing = [k for k in md_required if k not in found]
-    if len(missing):
+    if missing:
         raise MAASSeedDirMalformed("%s: missing files %s" % (seed, missing))
 
-    userdata = content.get('user-data', b"")
-    md = {}
-    for (key, val) in content.items():
-        if key == 'user-data':
-            continue
-        md[key] = val
+    vd_data = None
+    if ret.get('vendor-data'):
+        err = object()
+        vd_data = util.load_yaml(ret.get('vendor-data'), default=err,
+                                 allowed=(object))
+        if vd_data is err:
+            raise MAASSeedDirMalformed("vendor-data was not loadable as yaml.")
 
-    return (userdata, md)
+    return ret.get('user-data'), ret.get('meta-data'), vd_data
 
 
 class MAASSeedDirNone(Exception):
@@ -254,7 +279,7 @@ class MAASSeedDirMalformed(Exception):
 
 # Used to match classes to dependencies
 datasources = [
-  (DataSourceMAAS, (sources.DEP_FILESYSTEM, sources.DEP_NETWORK)),
+    (DataSourceMAAS, (sources.DEP_FILESYSTEM, sources.DEP_NETWORK)),
 ]
 
 
@@ -272,32 +297,42 @@ if __name__ == "__main__":
         """
         import argparse
         import pprint
+        import sys
 
         parser = argparse.ArgumentParser(description='Interact with MAAS DS')
         parser.add_argument("--config", metavar="file",
-            help="specify DS config file", default=None)
+                            help="specify DS config file", default=None)
         parser.add_argument("--ckey", metavar="key",
-            help="the consumer key to auth with", default=None)
+                            help="the consumer key to auth with", default=None)
         parser.add_argument("--tkey", metavar="key",
-            help="the token key to auth with", default=None)
+                            help="the token key to auth with", default=None)
         parser.add_argument("--csec", metavar="secret",
-            help="the consumer secret (likely '')", default="")
+                            help="the consumer secret (likely '')", default="")
         parser.add_argument("--tsec", metavar="secret",
-            help="the token secret to auth with", default=None)
+                            help="the token secret to auth with", default=None)
         parser.add_argument("--apiver", metavar="version",
-            help="the apiver to use ("" can be used)", default=MD_VERSION)
+                            help="the apiver to use ("" can be used)",
+                            default=MD_VERSION)
 
         subcmds = parser.add_subparsers(title="subcommands", dest="subcmd")
-        subcmds.add_parser('crawl', help="crawl the datasource")
-        subcmds.add_parser('get', help="do a single GET of provided url")
-        subcmds.add_parser('check-seed', help="read andn verify seed at url")
-
-        parser.add_argument("url", help="the data source to query")
+        for (name, help) in (('crawl', 'crawl the datasource'),
+                             ('get', 'do a single GET of provided url'),
+                             ('check-seed', 'read and verify seed at url')):
+            p = subcmds.add_parser(name, help=help)
+            p.add_argument("url", help="the datasource url", nargs='?',
+                           default=None)
 
         args = parser.parse_args()
 
         creds = {'consumer_key': args.ckey, 'token_key': args.tkey,
-            'token_secret': args.tsec, 'consumer_secret': args.csec}
+                 'token_secret': args.tsec, 'consumer_secret': args.csec}
+
+        if args.config is None:
+            for fname in ('91_kernel_cmdline_url', '90_dpkg_maas'):
+                fpath = "/etc/cloud/cloud.cfg.d/" + fname + ".cfg"
+                if os.path.exists(fpath) and os.access(fpath, os.R_OK):
+                    sys.stderr.write("Used config in %s.\n" % fpath)
+                    args.config = fpath
 
         if args.config:
             cfg = util.read_conf(args.config)
@@ -306,8 +341,14 @@ if __name__ == "__main__":
             for key in creds.keys():
                 if key in cfg and creds[key] is None:
                     creds[key] = cfg[key]
+            if args.url is None and 'metadata_url' in cfg:
+                args.url = cfg['metadata_url']
 
-        oauth_helper = url_helper.OauthUrlHelper(**creds)
+        if args.url is None:
+            sys.stderr.write("Must provide a url or a config with url.\n")
+            sys.exit(1)
+
+        oauth_helper = get_oauth_helper(creds)
 
         def geturl(url):
             # the retry is to ensure that oauth timestamp gets fixed
@@ -330,16 +371,20 @@ if __name__ == "__main__":
                 printurl(url)
 
         if args.subcmd == "check-seed":
+            sys.stderr.write("Checking seed at %s\n" % args.url)
             readurl = oauth_helper.readurl
             if args.url[0] == "/" or args.url.startswith("file://"):
-                readurl = None
-            (userdata, metadata) = read_maas_seed_url(
-                args.url, version=args.apiver, read_file_or_url=readurl,
-                retries=2)
-            print("=== userdata ===")
-            print(userdata.decode())
-            print("=== metadata ===")
+                (userdata, metadata, vd) = read_maas_seed_dir(args.url)
+            else:
+                (userdata, metadata, vd) = read_maas_seed_url(
+                    args.url, version=args.apiver, read_file_or_url=readurl,
+                    retries=2)
+            print("=== user-data ===")
+            print("N/A" if userdata is None else userdata.decode())
+            print("=== meta-data ===")
             pprint.pprint(metadata)
+            print("=== vendor-data ===")
+            pprint.pprint("N/A" if vd is None else vd)
 
         elif args.subcmd == "get":
             printurl(args.url)
@@ -350,3 +395,5 @@ if __name__ == "__main__":
             crawl(args.url)
 
     main()
+
+# vi: ts=4 expandtab

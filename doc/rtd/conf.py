@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.abspath('./'))
 sys.path.insert(0, os.path.abspath('.'))
 
 from cloudinit import version
+from cloudinit.config.schema import get_schema_doc
 
 # Supress warnings for docs that aren't used yet
 # unused_docs = [
@@ -28,6 +29,7 @@ project = 'Cloud-Init'
 extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.autodoc',
+    'sphinx.ext.autosectionlabel',
     'sphinx.ext.viewcode',
 ]
 
@@ -48,7 +50,7 @@ version = version.version_string()
 release = version
 
 # Set the default Pygments syntax
-highlight_language = 'python'
+highlight_language = 'yaml'
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -68,10 +70,19 @@ html_theme = 'default'
 # further.  For a list of options available for each theme, see the
 # documentation.
 html_theme_options = {
-    "bodyfont": "Arial, sans-serif",
-    "headfont": "Arial, sans-serif"
+    "bodyfont": "Ubuntu, Arial, sans-serif",
+    "headfont": "Ubuntu, Arial, sans-serif"
 }
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
 html_logo = 'static/logo.png'
+
+def generate_docstring_from_schema(app, what, name, obj, options, lines):
+    """Override module docs from schema when present."""
+    if what == 'module' and hasattr(obj, "schema"):
+        del lines[:]
+        lines.extend(get_schema_doc(obj.schema).split('\n'))
+
+def setup(app):
+    app.connect('autodoc-process-docstring', generate_docstring_from_schema)

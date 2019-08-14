@@ -1,18 +1,6 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2014 Yahoo! Inc.
 #
-#    Copyright (C) 2014 Yahoo! Inc.
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 from cloudinit.config import cc_debug
 
@@ -23,7 +11,7 @@ from cloudinit import util
 
 from cloudinit.sources import DataSourceNone
 
-from .. import helpers as t_help
+from cloudinit.tests.helpers import (FilesystemMockingTestCase, mock)
 
 import logging
 import shutil
@@ -32,7 +20,8 @@ import tempfile
 LOG = logging.getLogger(__name__)
 
 
-class TestDebug(t_help.FilesystemMockingTestCase):
+@mock.patch('cloudinit.distros.debian.read_system_locale')
+class TestDebug(FilesystemMockingTestCase):
     def setUp(self):
         super(TestDebug, self).setUp()
         self.new_root = tempfile.mkdtemp()
@@ -48,7 +37,8 @@ class TestDebug(t_help.FilesystemMockingTestCase):
             ds.metadata.update(metadata)
         return cloud.Cloud(ds, paths, {}, d, None)
 
-    def test_debug_write(self):
+    def test_debug_write(self, m_locale):
+        m_locale.return_value = 'en_US.UTF-8'
         cfg = {
             'abc': '123',
             'c': u'\u20a0',
@@ -66,7 +56,8 @@ class TestDebug(t_help.FilesystemMockingTestCase):
         for k in cfg.keys():
             self.assertIn(k, contents)
 
-    def test_debug_no_write(self):
+    def test_debug_no_write(self, m_locale):
+        m_locale.return_value = 'en_US.UTF-8'
         cfg = {
             'abc': '123',
             'debug': {
@@ -79,3 +70,5 @@ class TestDebug(t_help.FilesystemMockingTestCase):
         cc_debug.handle('cc_debug', cfg, cc, LOG, [])
         self.assertRaises(IOError,
                           util.load_file, '/var/log/cloud-init-debug.log')
+
+# vi: ts=4 expandtab

@@ -18,149 +18,7 @@ package_upgrade: true
 # Aliases: apt_reboot_if_required
 package_reboot_if_required: true
 
-# Add apt repositories
-#
-# Default: auto select based on cloud metadata
-#  in ec2, the default is <region>.archive.ubuntu.com
-# apt_mirror:
-#   use the provided mirror
-# apt_mirror_search:
-#   search the list for the first mirror.
-#   this is currently very limited, only verifying that
-#   the mirror is dns resolvable or an IP address
-#
-# if neither apt_mirror nor apt_mirror search is set (the default)
-# then use the mirror provided by the DataSource found.
-# In EC2, that means using <region>.ec2.archive.ubuntu.com
-# 
-# if no mirror is provided by the DataSource, and 'apt_mirror_search_dns' is
-# true, then search for dns names '<distro>-mirror' in each of
-# - fqdn of this host per cloud metadata
-# - localdomain
-# - no domain (which would search domains listed in /etc/resolv.conf)
-# If there is a dns entry for <distro>-mirror, then it is assumed that there
-# is a distro mirror at http://<distro>-mirror.<domain>/<distro>
-#
-# That gives the cloud provider the opportunity to set mirrors of a distro
-# up and expose them only by creating dns entries.
-#
-# if none of that is found, then the default distro mirror is used
-apt_mirror: http://us.archive.ubuntu.com/ubuntu/
-apt_mirror_search: 
- - http://local-mirror.mydomain
- - http://archive.ubuntu.com
-
-apt_mirror_search_dns: False
-
-# apt_proxy (configure Acquire::HTTP::Proxy)
-# 'apt_http_proxy' is an alias for 'apt_proxy'.
-# Also, available are 'apt_ftp_proxy' and 'apt_https_proxy'.
-# These affect Acquire::FTP::Proxy and Acquire::HTTPS::Proxy respectively
-apt_proxy: http://my.apt.proxy:3128
-
-# apt_pipelining (configure Acquire::http::Pipeline-Depth)
-# Default: disables HTTP pipelining. Certain web servers, such
-# as S3 do not pipeline properly (LP: #948461).
-# Valid options:
-#   False/default: Disables pipelining for APT
-#   None/Unchanged: Use OS default
-#   Number: Set pipelining to some number (not recommended)
-apt_pipelining: False
-
-# Preserve existing /etc/apt/sources.list
-# Default: overwrite sources_list with mirror.  If this is true
-# then apt_mirror above will have no effect
-apt_preserve_sources_list: true
-
-# 'source' entries in apt-sources that match this python regex
-# expression will be passed to add-apt-repository
-add_apt_repo_match: '^[\w-]+:\w'
-
-apt_sources:
- - source: "deb http://ppa.launchpad.net/byobu/ppa/ubuntu karmic main"
-   keyid: F430BBA5 # GPG key ID published on a key server
-   filename: byobu-ppa.list
-
- # PPA shortcut:
- #  * Setup correct apt sources.list line
- #  * Import the signing key from LP
- #
- #  See https://help.launchpad.net/Packaging/PPA for more information
- #  this requires 'add-apt-repository'
- - source: "ppa:smoser/ppa"    # Quote the string
-
- # Custom apt repository:
- #  * all that is required is 'source'
- #  * Creates a file in /etc/apt/sources.list.d/ for the sources list entry
- #  * [optional] Import the apt signing key from the keyserver 
- #  * Defaults:
- #    + keyserver: keyserver.ubuntu.com
- #    + filename: cloud_config_sources.list
- #
- #    See sources.list man page for more information about the format
- - source: deb http://archive.ubuntu.com/ubuntu karmic-backports main universe multiverse restricted
-
- # sources can use $MIRROR and $RELEASE and they will be replaced
- # with the local mirror for this cloud, and the running release
- # the entry below would be possibly turned into:
- # - source: deb http://us-east-1.ec2.archive.ubuntu.com/ubuntu natty multiverse
- - source: deb $MIRROR $RELEASE multiverse
-
- # this would have the same end effect as 'ppa:byobu/ppa'
- - source: "deb http://ppa.launchpad.net/byobu/ppa/ubuntu karmic main"
-   keyid: F430BBA5 # GPG key ID published on a key server
-   filename: byobu-ppa.list
-
- # Custom apt repository:
- #  * The apt signing key can also be specified
- #    by providing a pgp public key block
- #  * Providing the PBG key here is the most robust method for
- #    specifying a key, as it removes dependency on a remote key server
-
- - source: deb http://ppa.launchpad.net/alestic/ppa/ubuntu karmic main 
-   key: | # The value needs to start with -----BEGIN PGP PUBLIC KEY BLOCK-----
-      -----BEGIN PGP PUBLIC KEY BLOCK-----
-      Version: SKS 1.0.10
-
-      mI0ESpA3UQEEALdZKVIMq0j6qWAXAyxSlF63SvPVIgxHPb9Nk0DZUixn+akqytxG4zKCONz6
-      qLjoBBfHnynyVLfT4ihg9an1PqxRnTO+JKQxl8NgKGz6Pon569GtAOdWNKw15XKinJTDLjnj
-      9y96ljJqRcpV9t/WsIcdJPcKFR5voHTEoABE2aEXABEBAAG0GUxhdW5jaHBhZCBQUEEgZm9y
-      IEFsZXN0aWOItgQTAQIAIAUCSpA3UQIbAwYLCQgHAwIEFQIIAwQWAgMBAh4BAheAAAoJEA7H
-      5Qi+CcVxWZ8D/1MyYvfj3FJPZUm2Yo1zZsQ657vHI9+pPouqflWOayRR9jbiyUFIn0VdQBrP
-      t0FwvnOFArUovUWoKAEdqR8hPy3M3APUZjl5K4cMZR/xaMQeQRZ5CHpS4DBKURKAHC0ltS5o
-      uBJKQOZm5iltJp15cgyIkBkGe8Mx18VFyVglAZey
-      =Y2oI
-      -----END PGP PUBLIC KEY BLOCK-----
-
-## apt config via system_info:
-# under the 'system_info', you can further customize cloud-init's interaction
-# with apt. 
-#   system_info:
-#    apt_get_command: [command, argument, argument]
-#    apt_get_upgrade_subcommand: dist-upgrade
-#
-# apt_get_command:
-#  To specify a different 'apt-get' command, set 'apt_get_command'.
-#  This must be a list, and the subcommand (update, upgrade) is appended to it.
-#  default is:
-#    ['apt-get', '--option=Dpkg::Options::=--force-confold',
-#     '--option=Dpkg::options::=--force-unsafe-io', '--assume-yes', '--quiet']
-#
-# apt_get_upgrade_subcommand:
-#  Specify a different subcommand for 'upgrade. The default is 'dist-upgrade'.
-#  This is the subcommand that is invoked if package_upgrade is set to true above.
-#
-# apt_get_wrapper:
-#   command: eatmydata
-#   enabled: [True, False, "auto"]
-#  
-
-# Install additional packages on first boot
-#
-# Default: none
-#
-# if packages are specified, this apt_update will be set to true
-#
+# For 'apt' specific config, see cloud-config-apt.txt
 packages:
  - pwgen
  - pastebinit
@@ -188,19 +46,19 @@ packages:
 # - if an entry does not have all 6 fields, they will be filled in
 #   with values from 'mount_default_fields' below.
 #
-# Note, that you should set 'nobootwait' (see man fstab) for volumes that may
+# Note, that you should set 'nofail' (see man fstab) for volumes that may
 # not be attached at instance boot (or reboot)
 #
 mounts:
  - [ ephemeral0, /mnt, auto, "defaults,noexec" ]
  - [ sdc, /opt/data ]
- - [ xvdh, /opt/data, "auto", "defaults,nobootwait", "0", "0" ]
+ - [ xvdh, /opt/data, "auto", "defaults,nofail", "0", "0" ]
  - [ dd, /dev/zero ]
 
 # mount_default_fields
 # These values are used to fill in any entries in 'mounts' that are not
 # complete.  This must be an array, and must have 7 fields.
-mount_default_fields: [ None, None, "auto", "defaults,nobootwait", "0", "2" ]
+mount_default_fields: [ None, None, "auto", "defaults,nofail", "0", "2" ]
 
 # add each entry to ~/.ssh/authorized_keys for the configured user or the
 # first user defined in the user definition directive.
@@ -342,7 +200,7 @@ ssh_import_id: [smoser]
 #
 # Default: none
 # 
-debconf_selections: |     # Need to perserve newlines
+debconf_selections: |     # Need to preserve newlines
         # Force debconf priority to critical.
         debconf debconf/priority select critical
 
@@ -568,13 +426,20 @@ syslog_fix_perms: syslog:root
 #
 # there is also an option to set multiple users passwords, using 'chpasswd'
 # That looks like the following, with 'expire' set to 'True' by default.
-# to not expire users passwords, set 'expire' to 'False':
+# to not expire users passwords, set 'expire' to 'False'. Also possible
+# to set hashed password, here account 'user3' has a password it set to
+# 'cloud-init', hashed with SHA-256:
 # chpasswd:
 #  list: |
 #    user1:password1
 #    user2:RANDOM
+#    user3:$5$eriogqzq$Dg7PxHsKGzziuEGkZgkLvacjuEFeljJ.rLf.hZqKQLA
 #  expire: True
 # ssh_pwauth: [ True, False, "" or "unchanged" ]
+#
+# Hashed passwords can be generated in multiple ways, example with python3:
+# python3 -c 'import crypt,getpass; print(crypt.crypt(getpass.getpass(), crypt.mksalt(crypt.METHOD_SHA512)))'
+# Newer versions of 'mkpasswd' will also work: mkpasswd -m sha-512 password
 #
 # So, a simple working example to allow login via ssh, and not expire
 # for the default user would look like:

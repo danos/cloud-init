@@ -1,3 +1,5 @@
+# This file is part of cloud-init. See LICENSE file for license information.
+
 import os
 import shutil
 import tempfile
@@ -7,7 +9,7 @@ from cloudinit.config.cc_rsyslog import (
     parse_remotes_line, remotes_to_rsyslog_cfg)
 from cloudinit import util
 
-from .. import helpers as t_help
+from cloudinit.tests import helpers as t_help
 
 
 class TestLoadConfig(t_help.TestCase):
@@ -31,7 +33,7 @@ class TestLoadConfig(t_help.TestCase):
             'config_dir': "mydir",
             'config_filename': 'myfilename',
             'service_reload_command': 'auto'}
-            )
+        )
 
         self.assertEqual(found, self.basecfg)
 
@@ -172,3 +174,5 @@ class TestRemotesToSyslog(t_help.TestCase):
         lines = r.splitlines()
         self.assertEqual(1, len(lines))
         self.assertTrue(myline in r.splitlines())
+
+# vi: ts=4 expandtab

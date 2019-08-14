@@ -1,20 +1,8 @@
-# vi: ts=4 expandtab
+# Copyright (C) 2012 Yahoo! Inc.
 #
-#    Copyright (C) 2012 Yahoo! Inc.
+# Author: Joshua Harlow <harlowja@yahoo-inc.com>
 #
-#    Author: Joshua Harlow <harlowja@yahoo-inc.com>
-#
-#    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License version 3, as
-#    published by the Free Software Foundation.
-#
-#    This program is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# This file is part of cloud-init. See LICENSE file for license information.
 
 import six
 from six import StringIO
@@ -77,8 +65,7 @@ class SysConf(configobj.ConfigObj):
         quot_func = None
         if value[0] in ['"', "'"] and value[-1] in ['"', "'"]:
             if len(value) == 1:
-                quot_func = (lambda x:
-                                self._get_single_quote(x) % x)
+                quot_func = (lambda x: self._get_single_quote(x) % x)
         else:
             # Quote whitespace if it isn't the start + end of a shell command
             if value.strip().startswith("$(") and value.strip().endswith(")"):
@@ -91,10 +78,10 @@ class SysConf(configobj.ConfigObj):
                         # to use single quotes which won't get expanded...
                         if re.search(r"[\n\"']", value):
                             quot_func = (lambda x:
-                                            self._get_triple_quote(x) % x)
+                                         self._get_triple_quote(x) % x)
                         else:
                             quot_func = (lambda x:
-                                            self._get_single_quote(x) % x)
+                                         self._get_single_quote(x) % x)
                     else:
                         quot_func = pipes.quote
         if not quot_func:
@@ -112,3 +99,5 @@ class SysConf(configobj.ConfigObj):
                                self._a_to_u('='),
                                val,
                                cmnt)
+
+# vi: ts=4 expandtab
