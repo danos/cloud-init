@@ -68,7 +68,7 @@
 +
 +    else:
 +        # if not, generate them
-+        cmd = ['sh', '-c', '/opt/vyatta/sbin/vyatta-update-ssh.pl > /etc/ssh/sshd_config' ]
++        cmd = ['sh', '-c', 'echo "configure\n/opt/vyatta/sbin/vyatta-update-ssh.pl > /etc/ssh/sshd_config" | vcli' ]
 +        try:
 +            # TODO(harlowja): Is this guard needed?
 +            with util.SeLinuxGuard("/etc/ssh", recursive=True):
