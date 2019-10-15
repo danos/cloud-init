@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/cloudinit/config/cc_ssh_vyatta.py
-@@ -0,0 +1,137 @@
+@@ -0,0 +1,138 @@
 +# vi: ts=4 expandtab
 +#
 +#    Copyright (C) 2015 Brocade Communication Systems, Inc.
@@ -29,6 +29,7 @@
 +# since the module attribute 'distros'
 +# is a list of distros that are supported, not a sub-module
 +from cloudinit import distros as ds
++from cloudinit.distros import ug_util
 +
 +from cloudinit import ssh_util
 +from cloudinit import util
@@ -79,8 +80,8 @@
 +            util.logexc(log, "Failed to generate SSH keys");
 +
 +    try:
-+        (users, _groups) = ds.normalize_users_groups(cfg, cloud.distro)
-+        (user, _user_config) = ds.extract_default(users)
++        (users, _groups) = ug_util.normalize_users_groups(cfg, cloud.distro)
++        (user, _user_config) = ug_util.extract_default(users)
 +        disable_root = util.get_cfg_option_bool(cfg, "disable_root", True)
 +        disable_root_opts = util.get_cfg_option_str(cfg, "disable_root_opts",
 +                                                    DISABLE_ROOT_OPTS)

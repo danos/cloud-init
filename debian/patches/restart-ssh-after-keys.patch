@@ -1,6 +1,6 @@
 --- a/cloudinit/config/cc_ssh_vyatta.py
 +++ b/cloudinit/config/cc_ssh_vyatta.py
-@@ -75,6 +75,10 @@
+@@ -76,6 +76,10 @@
          except:
              util.logexc(log, "Failed to generate SSH keys");
  
@@ -9,5 +9,5 @@
 +    util.subp(cmd, capture=False)
 +
      try:
-         (users, _groups) = ds.normalize_users_groups(cfg, cloud.distro)
-         (user, _user_config) = ds.extract_default(users)
+         (users, _groups) = ug_util.normalize_users_groups(cfg, cloud.distro)
+         (user, _user_config) = ug_util.extract_default(users)
