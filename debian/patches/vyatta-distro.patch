@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/cloudinit/distros/vrouter.py
-@@ -0,0 +1,259 @@
+@@ -0,0 +1,261 @@
 +# vi: ts=4 expandtab
 +#
 +#    Copyright (C) 2015 Brocade Communication Systems, Inc.
@@ -138,7 +138,9 @@
 +
 +        for key in keys:
 +            key = key.encode('ascii', 'ignore')
-+            (keyType, keyBase64, comment) = key.split();
++            split_key = key.split()
++            keyType = split_key[0]
++            keyBase64 = split_key[1]
 +            result = self.client.set(path + [str(keyNo), "key", keyBase64.decode('ascii')])
 +            result = self.client.set(path + [str(keyNo), "type", keyType.decode('ascii')])
 +            keyNo = keyNo + 1

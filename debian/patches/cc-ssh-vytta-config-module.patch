@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/cloudinit/config/cc_ssh_vyatta.py
-@@ -0,0 +1,138 @@
+@@ -0,0 +1,140 @@
 +# vi: ts=4 expandtab
 +#
 +#    Copyright (C) 2015 Brocade Communication Systems, Inc.
@@ -105,7 +105,9 @@
 +        keyNo = 0
 +        for key in keys:
 +            key = key.encode('ascii', 'ignore')
-+            (keyType, keyBase64, comment) = key.split();
++            split_key = key.split()
++            keyType = split_key[0]
++            keyBase64 = split_key[1]
 +
 +            path = [ "system", "login", "user", user,
 +                     "authentication", "public-keys", str(keyNo) ]
