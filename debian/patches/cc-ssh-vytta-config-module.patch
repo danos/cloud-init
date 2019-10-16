@@ -1,8 +1,9 @@
 --- /dev/null
 +++ b/cloudinit/config/cc_ssh_vyatta.py
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,145 @@
 +# vi: ts=4 expandtab
 +#
++#    Copyright (C) 2019 AT&T Intellectual Property.
 +#    Copyright (C) 2015 Brocade Communication Systems, Inc.
 +#    Copyright (C) 2009-2010 Canonical Ltd.
 +#    Copyright (C) 2012, 2013 Hewlett-Packard Development Company, L.P.

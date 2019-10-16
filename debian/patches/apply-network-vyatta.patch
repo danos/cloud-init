@@ -1,11 +1,10 @@
 --- /dev/null
 +++ b/cloudinit/config/cc_apply_network_vyatta.py
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,85 @@
 +# vi: ts=4 expandtab
-+
-+#    Copyright (C) 2015 Brocade Communication Systems, Inc.
 +#
-+#    Author: Chas Williams <ciwillia@brocade.com>
++#    Copyright (C) 2019 AT&T Intellectual Property.
++#    Copyright (C) 2015 Brocade Communication Systems, Inc.
 +#
 +#    This program is free software: you can redistribute it and/or modify
 +#    it under the terms of the GNU General Public License version 3, as
