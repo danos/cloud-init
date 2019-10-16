@@ -1,3 +1,15 @@
+cloud-init (18.3-5vyatta3) unstable; urgency=medium
+
+  [ James Wheatley ]
+  * Fix SSH config and host key generation
+  * Fix user and group normalization
+  * Fix SSH key splitting
+  * Fold SSH restart patch into ssh_vyatta patch
+
+  [ Charles (Chas) Williams ]
+
+ -- Charles (Chas) Williams <ciwillia@mail.eng.vyatta.net>  Wed, 16 Oct 2019 06:16:56 -0400
+
 cloud-init (18.3-5vyatta2) unstable; urgency=medium
 
   * Cleanup old sources
