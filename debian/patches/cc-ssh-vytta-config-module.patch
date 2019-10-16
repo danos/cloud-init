@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/cloudinit/config/cc_ssh_vyatta.py
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,144 @@
 +# vi: ts=4 expandtab
 +#
 +#    Copyright (C) 2015 Brocade Communication Systems, Inc.
@@ -78,6 +78,10 @@
 +            # restart sshd?
 +        except:
 +            util.logexc(log, "Failed to generate SSH keys");
++
++    # Restart SSH after creating/placing host keys
++    cmd = ['systemctl', 'restart', 'ssh.service']
++    util.subp(cmd, capture=False)
 +
 +    try:
 +        (users, _groups) = ug_util.normalize_users_groups(cfg, cloud.distro)

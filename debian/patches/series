@@ -23,4 +23,3 @@ apply-network-vyatta.patch
 debian9-build-fixes.patch
 skip-blkid-tests.patch
 azure-endpoint-fallback.patch
-restart-ssh-after-keys.patch
