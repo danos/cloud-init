@@ -1,3 +1,9 @@
+cloud-init (18.3-5vyatta6) unstable; urgency=medium
+
+  * Update copyrights (Bugfix: VRVDR-48979)
+
+ -- Charles (Chas) Williams <ciwillia@vyatta.att-mail.com>  Fri, 22 Nov 2019 10:53:12 -0500
+
 cloud-init (18.3-5vyatta4) unstable; urgency=medium
 
   * Update copyrights
