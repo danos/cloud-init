@@ -44,7 +44,7 @@ Depends:
  lu,
  net-tools,
  procps,
- python-vyatta-cfgclient,
+ python3-vyatta-cfgclient,
  ${misc:Depends},
  ${python3:Depends},
 Recommends:
