@@ -1,3 +1,13 @@
+cloud-init (18.3-5vyatta7) unstable; urgency=medium
+
+  [ Nicholas Brown ]
+  * depend on python3-vyatta-cfgclient instead of python-vyatta-cfgclient
+    (Fixes: VRVDR-50671)
+
+  [ Charles (Chas) Williams ]
+
+ -- Charles (Chas) Williams <ciwillia@vyatta.att-mail.com>  Thu, 16 Apr 2020 11:13:26 -0400
+
 cloud-init (18.3-5vyatta6) unstable; urgency=medium
 
   * Update copyrights (Bugfix: VRVDR-48979)
