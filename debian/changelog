@@ -1,3 +1,12 @@
+cloud-init (18.3-5vyatta8) unstable; urgency=medium
+
+  [ Sameer Agrawal ]
+  * Update username as part of vyatta rebranding. VRVDR-51029
+
+  [ Charles (Chas) Williams ]
+
+ -- Charles (Chas) Williams <ciwillia@vyatta.att-mail.com>  Mon, 11 May 2020 11:29:45 -0400
+
 cloud-init (18.3-5vyatta7) unstable; urgency=medium
 
   [ Nicholas Brown ]
