@@ -1,3 +1,10 @@
+cloud-init (18.3-5vyatta9) unstable; urgency=medium
+
+  [ Nicholas Brown ]
+  * Explicit python3 dependencies
+
+ -- Charles (Chas) Williams <ciwillia@vyatta.att-mail.com>  Mon, 08 Mar 2021 07:17:51 -0500
+
 cloud-init (18.3-5vyatta8) unstable; urgency=medium
 
   [ Sameer Agrawal ]
